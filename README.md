@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/fancy.png" alt="Medea — crucible knot logo and wordmark" width="760">
+  <img src="docs/fancy.webp" alt="Medea — crucible knot logo and wordmark" width="760">
 </p>
 
 # Medea — Rust CLI for Alpaca's paper Trading API
