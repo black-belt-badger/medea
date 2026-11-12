@@ -4,7 +4,7 @@ Describe what changed and why. Include the user-visible behavior or problem addr
 
 ## Related issue
 
-Closes #<!-- replace with issue number, or use "Related to #..." for partial work -->
+<!-- Link an issue, for example: Closes #123 or Related to #123. -->
 
 ## Verification
 
