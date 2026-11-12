@@ -1,6 +1,6 @@
 # Releasing Medea (maintainers)
 
-Medea is an **unofficial** Rust client and CLI for Alpaca's APIs. The repository is public and the first paper-account feature has been implemented. The first GitHub release is still pending final checks.
+Medea is an **unofficial** Rust client and CLI for Alpaca's APIs. The repository is public. The `v0.1.0` prerelease introduces read-only Alpaca paper-account access; follow this checklist for future releases and maintenance.
 
 ## Versioning
 
@@ -46,6 +46,6 @@ gh release create v0.1.0 \
   --prerelease
 ```
 
-These are **examples for a future release**, not commands to run before the implementation and license are ready. Review the generated release notes; GitHub provides source archives by default.
+Run these commands only after review, green CI on the exact commit, and explicit release approval. Review the generated release notes; GitHub provides source archives by default. Do not publish secrets or real account data.
 
 Afterward, verify the tag and release and close the milestone. Never force-rewrite an already published tag.

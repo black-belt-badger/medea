@@ -4,7 +4,7 @@ Medea is an **unofficial** Rust CLI supporting read-only access to Alpaca **pape
 
 ## Supported versions
 
-No tagged release has been published yet. We review and address security reports against the current `main` branch; older commits are not supported.
+We review and address security reports against the current `main` branch and latest `v0.1.x` prerelease on a best-effort basis. Older prereleases and historical commits do not receive guaranteed fixes.
 
 ## Report vulnerabilities privately
 
