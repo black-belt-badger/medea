@@ -1,52 +1,119 @@
-# Medea — Rust CLI for Alpaca's Trading API
+# Medea — Rust CLI for Alpaca's paper Trading API
 
-**Medea** is an unofficial Rust command-line application being developed alongside [Kirke](https://github.com/black-belt-badger/kirke), its Haskell counterpart. We aim to implement the same outward Alpaca API behavior in both languages while keeping each implementation idiomatic.
+[![Rust CI](https://github.com/black-belt-badger/medea/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/black-belt-badger/medea/actions/workflows/rust-ci.yml)
 
-**Status: bootstrap only.** The current program simply prints `Medea`. The paper-account command, HTTP client, API authentication, and trading operations are **not yet implemented**.
+**Medea** is an unofficial Rust CLI developed alongside [Kirke](https://github.com/black-belt-badger/kirke), its Haskell counterpart. Both aim for the same user-facing Alpaca API behavior while remaining idiomatic in their respective languages.
 
-Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
+**Current scope: read-only Alpaca paper account access.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
 
 ## Requirements
 
-- [Rust](https://www.rust-lang.org/tools/install) via `rustup`, including Cargo.
-- Rust **1.99.1**, pinned in `rust-toolchain.toml`; `rustup` selects it automatically.
-- No Alpaca credentials are needed for the current placeholder program or offline checks.
+- Rust **1.99.1**, pinned in `rust-toolchain.toml`, installed through [rustup](https://rustup.rs/).
+- Linux or Unix-like system for owner-only JSON output permissions.
+- An [Alpaca paper account](https://alpaca.markets/) for authenticated commands. Offline tests do not require one.
 
-## Build and run
+## Build and test
 
 ```sh
 git clone https://github.com/black-belt-badger/medea.git
 cd medea
-cargo run --locked
-```
-
-At present, the output is:
-
-```text
-Medea
-```
-
-To run the same local checks as GitHub Actions:
-
-```sh
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked --all-targets
 cargo build --locked --release
+./target/release/medea --help
 ```
 
-GitHub Actions executes these on pull requests and on pushes to `main`. The repository remains private during initial development.
+The same checks run in GitHub Actions on pull requests and `main` pushes.
 
-## Roadmap
+## Paper credentials
 
-The next feature is a **read-only Alpaca paper-account command** matching Kirke's behavior ([issue #3](https://github.com/black-belt-badger/medea/issues/3)). Following work covers account state, historical crypto market data, and carefully controlled paper trading. No live trading or real order placement is currently supported.
+Medea reads **only** these environment variables:
 
-The initial `v0.1.0` milestone tracks account parity, documentation, release metadata, and safety checks. We do not publish a release until its functionality has been implemented and verified.
+- `APCA_API_KEY_ID`
+- `APCA_API_SECRET_KEY`
 
-## Contributions and security
+The request uses HTTPS `GET https://paper-api.alpaca.markets/v2/account` with the Alpaca authentication headers. It has a 20-second timeout, does not follow redirects, and never connects to the live trading endpoint.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development conventions and [RELEASING.md](RELEASING.md) for the release checklist.
+You can set them directly in your shell, or prepare a private file outside the repository:
 
-Never commit Alpaca API keys, secret tokens, or real account data. Future API requests will use **paper** credentials, provided outside version control. Report security-sensitive problems privately rather than in public issues.
+```sh
+install -d -m 700 "$HOME/.config/medea"
+umask 077
+${EDITOR:-vi} "$HOME/.config/medea/credentials"
+chmod 600 "$HOME/.config/medea/credentials"
+```
 
-Licensing and final public release metadata are being tracked in [issue #4](https://github.com/black-belt-badger/medea/issues/4).
+The file should contain two exports using **paper** account credentials:
+
+```sh
+export APCA_API_KEY_ID="YOUR_PAPER_KEY_ID"
+export APCA_API_SECRET_KEY="YOUR_PAPER_SECRET_KEY"
+```
+
+Source only files you created and trust; do not commit API credentials or paste them into issues, PRs, screenshots, or logs.
+
+```sh
+source "$HOME/.config/medea/credentials"
+```
+
+This credentials file is for shell convenience; the application itself only reads the environment variables.
+
+## Usage
+
+```sh
+cargo run --locked -- account --help
+cargo run --locked -- account
+```
+
+The first command shows CLI help. The second retrieves a paper account and prints a summary containing account number, status, currency, cash, equity, buying power, trading-blocked flag, and optional crypto status. Example with sensitive values redacted:
+
+```text
+Medea — Alpaca paper account
+Account number: [redacted]
+Status: ACTIVE
+Currency: USD
+Cash: [redacted]
+Equity: [redacted]
+Buying power: [redacted]
+Trading blocked: no
+Crypto status: ACTIVE
+```
+
+**The real summary contains your account information and balances; treat it as sensitive.**
+
+To save the complete **unmodified** JSON response instead:
+
+```sh
+mkdir -p output
+chmod 700 output
+cargo run --locked -- account --out output/account.json
+```
+
+The destination directory must exist. The file is written through an owner-only temporary file in the same directory and atomically replaces any existing destination. On Unix, the saved JSON has `0600` permissions. `output/` is ignored by Git.
+
+Malformed API responses, rejected credentials, HTTP errors, and file-write failures result in nonzero exit status. Diagnostics never include authentication headers or response bodies.
+
+## Paper integration check (maintainers)
+
+The explicit script `scripts/it.sh` runs the real **paper-only** account command, checks the JSON fields and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
+
+On a trusted Linux machine with `jq`, `stat`, and paper credentials:
+
+```sh
+./scripts/it.sh
+```
+
+By default the script sources `${XDG_CONFIG_HOME:-$HOME/.config}/medea/credentials`. If your private credentials live elsewhere, pass their path via `MEDEA_CREDENTIALS_FILE`; for example, maintainers sharing Kirke's paper credentials can use:
+
+```sh
+MEDEA_CREDENTIALS_FILE="$HOME/.config/kirke/credentials" ./scripts/it.sh
+```
+
+Do not paste the script's private outputs into CI, an issue, or a release.
+
+## Roadmap, contributions, and safety
+
+Next: account state, historical crypto market data, and carefully controlled paper trading. **Live trading, order placement, streaming, and market-data commands are not part of this version.**
+
+See [GitHub Issues](https://github.com/black-belt-badger/medea/issues), [CONTRIBUTING.md](CONTRIBUTING.md), and [RELEASING.md](RELEASING.md). The first `v0.1.0` release awaits final documentation, license metadata, and review under [issue #4](https://github.com/black-belt-badger/medea/issues/4).
