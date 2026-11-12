@@ -9,6 +9,7 @@ use reqwest::redirect::Policy;
 use crate::credentials::Credentials;
 
 const PAPER_ACCOUNT_URL: &str = "https://paper-api.alpaca.markets/v2/account";
+const PAPER_POSITIONS_URL: &str = "https://paper-api.alpaca.markets/v2/positions";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClientError {
@@ -44,11 +45,24 @@ fn paper_client() -> Result<Client, ClientError> {
 }
 
 fn account_request(client: &Client, credentials: &Credentials) -> Result<Request, ClientError> {
+    paper_request(client, credentials, PAPER_ACCOUNT_URL)
+}
+
+fn positions_request(client: &Client, credentials: &Credentials) -> Result<Request, ClientError> {
+    paper_request(client, credentials, PAPER_POSITIONS_URL)
+}
+
+// One authenticated request builder, with identical safeguards for all paper endpoints.
+fn paper_request(
+    client: &Client,
+    credentials: &Credentials,
+    url: &str,
+) -> Result<Request, ClientError> {
     fn header(value: &str) -> Result<HeaderValue, ClientError> {
         HeaderValue::from_str(value).map_err(|_| ClientError::InvalidCredentials)
     }
     client
-        .get(PAPER_ACCOUNT_URL)
+        .get(url)
         .header("APCA-API-KEY-ID", header(&credentials.key_id)?)
         .header("APCA-API-SECRET-KEY", header(&credentials.secret_key)?)
         .build()
@@ -56,8 +70,19 @@ fn account_request(client: &Client, credentials: &Credentials) -> Result<Request
 }
 
 pub fn fetch_account(credentials: &Credentials) -> Result<Vec<u8>, ClientError> {
+    fetch_paper(credentials, account_request)
+}
+
+pub fn fetch_positions(credentials: &Credentials) -> Result<Vec<u8>, ClientError> {
+    fetch_paper(credentials, positions_request)
+}
+
+fn fetch_paper(
+    credentials: &Credentials,
+    build_request: fn(&Client, &Credentials) -> Result<Request, ClientError>,
+) -> Result<Vec<u8>, ClientError> {
     let client = paper_client()?;
-    let request = account_request(&client, credentials)?;
+    let request = build_request(&client, credentials)?;
     let response = client
         .execute(request)
         .map_err(|_| ClientError::ConnectionFailed)?;
@@ -78,7 +103,7 @@ fn check_status(status: StatusCode) -> Result<(), ClientError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, account_request, check_status, paper_client};
+    use super::{ClientError, account_request, check_status, paper_client, positions_request};
     use crate::credentials::Credentials;
     use reqwest::{Method, StatusCode};
 
@@ -97,6 +122,23 @@ mod tests {
         assert_eq!(request.url().port_or_known_default(), Some(443));
         assert_eq!(request.headers()["APCA-API-KEY-ID"], "example-key");
         assert_eq!(request.headers()["APCA-API-SECRET-KEY"], "example-secret");
+    }
+
+    #[test]
+    fn paper_positions_request_reuses_https_get_and_authentication() {
+        let client = paper_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let positions = positions_request(&client, &creds).unwrap();
+        let account = account_request(&client, &creds).unwrap();
+        assert_eq!(positions.method(), Method::GET);
+        assert_eq!(positions.url().scheme(), "https");
+        assert_eq!(positions.url().host_str(), Some("paper-api.alpaca.markets"));
+        assert_eq!(positions.url().path(), "/v2/positions");
+        assert_eq!(positions.url().port_or_known_default(), Some(443));
+        assert_eq!(positions.headers(), account.headers());
     }
 
     #[test]

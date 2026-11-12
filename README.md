@@ -4,7 +4,7 @@
 
 **Medea** is an unofficial Rust CLI developed alongside [Kirke](https://github.com/black-belt-badger/kirke), its Haskell counterpart. Both aim for the same user-facing Alpaca API behavior while remaining idiomatic in their respective languages.
 
-**Current scope: read-only Alpaca paper account access.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
+**Current scope: read-only Alpaca paper account information and open positions.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
 
 ## Requirements
 
@@ -41,7 +41,7 @@ Medea reads **only** these environment variables:
 - `APCA_API_KEY_ID`
 - `APCA_API_SECRET_KEY`
 
-The request uses HTTPS `GET https://paper-api.alpaca.markets/v2/account` with the Alpaca authentication headers. It has a 20-second timeout, does not follow redirects, and never connects to the live trading endpoint.
+The requests use the Alpaca authentication headers over HTTPS to `GET https://paper-api.alpaca.markets/v2/account` and `GET https://paper-api.alpaca.markets/v2/positions`. It has a 20-second timeout, does not follow redirects, and never connects to the live trading endpoint.
 
 You can set them directly in your shell, or prepare a private file outside the repository:
 
@@ -102,9 +102,33 @@ The destination directory must exist. The file is written through an owner-only 
 
 Malformed API responses, rejected credentials, HTTP errors, and file-write failures result in nonzero exit status. Diagnostics never include authentication headers or response bodies.
 
+## Positions: crypto and equities
+
+List **all open positions** in the paper account:
+
+```sh
+medea positions
+# Or, without a local installation:
+cargo run --locked -- positions
+```
+
+The command includes crypto and equity positions, showing symbol, asset class, long/short side, quantity, market value, current price, and unrealized P/L. Alpaca supplies financial quantities and amounts as decimal strings; Medea preserves them exactly, without floating-point rounding. Absent values print as `not provided`. An empty portfolio prints `No open positions.`
+
+Save the original, complete JSON array instead of displaying the summary:
+
+```sh
+mkdir -p output
+chmod 700 output
+medea positions --out output/positions.json
+```
+
+The file uses the same private, atomic output procedure as `account --out` (typically `0600` on Unix). The target directory must exist. Both outputs may contain sensitive portfolio data; the ignored `output/` directory is intended for private use.
+
+The endpoint has no symbol filter in this command. **No orders are placed and positions are never closed.** See the [Alpaca positions API reference](https://docs.alpaca.markets/us/reference/getallopenpositions).
+
 ## Paper integration check (maintainers)
 
-The explicit script `scripts/it.sh` runs the real **paper-only** account command, checks the JSON fields and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
+The explicit script `scripts/it.sh` runs the real **paper-only** account and positions commands, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
 
 On a trusted Linux machine with `jq`, `stat`, and paper credentials:
 
