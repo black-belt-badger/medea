@@ -7,6 +7,10 @@ Versions use [Semantic Versioning](https://semver.org/). This project has not pu
 ## Unreleased
 
 ### Added
-- Contributor issue forms, pull request template, and contributing guide.
+- `medea account` fetches a paper account and prints a readable summary.
+- `medea account --out PATH` saves unmodified account JSON with owner-only permissions and atomic replacement.
+- Credential validation, strict JSON decoding with exact monetary strings, paper-only HTTPS with timeout and redirects disabled.
+- Offline Rust unit and CLI tests, Rust CI (format, Clippy, tests, release build), and an optional private paper API integration check.
+- Public README, contribution templates, security reporting policy, release procedure, and BSD-3-Clause licensing.
 
-The Alpaca account CLI and its tests are planned for the first `0.1.0` release; they are not implemented yet.
+Before publishing the first release, move these entries to a dated `0.1.0` heading.

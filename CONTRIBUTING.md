@@ -29,7 +29,7 @@ Please add regression tests for bug fixes and tests for new behavior. Document a
 
 ## Privacy and security
 
-Never commit or paste Alpaca API keys, secrets, or real paper/live account payloads. Use local environment variables or ignored configuration files and redact logs before posting them. Do not disclose potential security vulnerabilities in public issues; contact maintainers privately.
+Never commit or paste Alpaca API keys, secrets, or real paper/live account payloads. Use local environment variables or ignored configuration files and redact logs before posting them. Do not disclose potential security vulnerabilities in public issues; use [GitHub private vulnerability reporting](SECURITY.md).
 
 ## Scope
 
