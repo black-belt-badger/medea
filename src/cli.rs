@@ -24,6 +24,11 @@ pub enum Command {
     Assets(AssetsArgs),
     /// List and filter Alpaca paper orders (read-only).
     Orders(OrdersArgs),
+    /// Inspect an individual Alpaca paper order (read-only).
+    Order {
+        #[command(subcommand)]
+        command: OrderCommand,
+    },
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]
@@ -161,11 +166,63 @@ fn parse_order_limit(value: &str) -> Result<u16, String> {
     }
 }
 
+// The nested command matches Kirke's "order get ORDER_ID" CLI.
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum OrderCommand {
+    /// Fetch a single order by its Alpaca server-issued UUID.
+    Get(OrderGetArgs),
+}
+
+#[derive(Debug, Args, PartialEq, Eq)]
+pub struct OrderGetArgs {
+    /// Alpaca server order UUID, not client_order_id.
+    #[arg(value_name = "ORDER_ID")]
+    pub order_id: OrderId,
+    /// Roll up multi-leg orders under the parent order (nested=true).
+    #[arg(long)]
+    pub nested: bool,
+    /// Write the complete unmodified JSON response to PATH.
+    #[arg(long = "out", value_name = "PATH")]
+    pub output: Option<PathBuf>,
+}
+
+/// A validated canonical order UUID. Private storage prevents callers from
+/// constructing unsafe URL path segments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderId(String);
+
+impl OrderId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for OrderId {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let bytes = value.as_bytes();
+        let valid = bytes.len() == 36
+            && bytes.iter().enumerate().all(|(index, byte)| {
+                if matches!(index, 8 | 13 | 18 | 23) {
+                    *byte == b'-'
+                } else {
+                    byte.is_ascii_hexdigit()
+                }
+            });
+        if valid {
+            Ok(Self(value.to_owned()))
+        } else {
+            Err("Expected an order UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)".into())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        AssetClass, AssetStatus, AssetsArgs, Cli, Command, OrderDirection, OrderStatus,
-        OrderSymbols, OrdersArgs, OutputArgs,
+        AssetClass, AssetStatus, AssetsArgs, Cli, Command, OrderCommand, OrderDirection,
+        OrderGetArgs, OrderId, OrderStatus, OrderSymbols, OrdersArgs, OutputArgs,
     };
     use clap::Parser;
 
@@ -398,6 +455,94 @@ mod tests {
             cli.command,
             Command::Orders(OrdersArgs { symbols: Some(OrderSymbols(ref symbols)), .. }) if symbols == &["BRK.B"]
         ));
+    }
+
+    #[test]
+    fn parses_single_order_get_by_uuid() {
+        let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+        let cli = Cli::try_parse_from(["medea", "order", "get", uuid]).unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Order {
+                command: OrderCommand::Get(OrderGetArgs {
+                    order_id: uuid.parse().unwrap(),
+                    nested: false,
+                    output: None,
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_single_order_nested_lookup_and_original_json_output() {
+        let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+        let cli = Cli::try_parse_from([
+            "medea",
+            "order",
+            "get",
+            uuid,
+            "--nested",
+            "--out",
+            "order.json",
+        ])
+        .unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Order {
+                command: OrderCommand::Get(OrderGetArgs {
+                    order_id: uuid.parse().unwrap(),
+                    nested: true,
+                    output: Some("order.json".into()),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn validates_canonical_uuid_including_uppercase_hex() {
+        let upper = "9275F66A-0A1B-4A22-8C55-167416C7CF14";
+        assert_eq!(upper.parse::<OrderId>().unwrap().as_str(), upper);
+        for bad in [
+            "",
+            " ",
+            "not-a-uuid",
+            "1234",
+            "00000000-0000-0000-0000-00000000000",
+            "00000000_0000_0000_0000_000000000000",
+            "00000000-0000-0000-0000-00000000000g",
+        ] {
+            assert!(bad.parse::<OrderId>().is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_url_injection_in_order_uuid() {
+        for bad in [
+            "9275f66a-0a1b-4a22-8c55-167416c7cf14/positions",
+            "9275f66a-0a1b-4a22-8c55-167416c7cf14?nested=true",
+            "9275f66a-0a1b-4a22-8c55-167416c7cf14#fragment",
+            "9275f66a-0a1b-4a22-8c55-167416c7cf14%2f",
+            "../v2/account",
+        ] {
+            assert!(bad.parse::<OrderId>().is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_missing_and_invalid_order_get_arguments() {
+        let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+        for args in [
+            vec!["medea", "order"],
+            vec!["medea", "order", "get"],
+            vec!["medea", "order", "get", ""],
+            vec!["medea", "order", "get", "not-a-uuid"],
+            vec!["medea", "order", "get", "../account"],
+            vec!["medea", "order", "get", uuid, "--out"],
+            vec!["medea", "order", "get", uuid, "--unknown"],
+            vec!["medea", "order", "unknown", uuid],
+        ] {
+            assert!(Cli::try_parse_from(args.clone()).is_err(), "{args:?}");
+        }
     }
 
     #[test]

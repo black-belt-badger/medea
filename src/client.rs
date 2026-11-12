@@ -6,7 +6,7 @@ use reqwest::blocking::{Client, Request};
 use reqwest::header::HeaderValue;
 use reqwest::redirect::Policy;
 
-use crate::cli::{AssetClass, AssetStatus, OrdersArgs};
+use crate::cli::{AssetClass, AssetStatus, OrderGetArgs, OrdersArgs};
 use crate::credentials::Credentials;
 
 const PAPER_ACCOUNT_URL: &str = "https://paper-api.alpaca.markets/v2/account";
@@ -19,6 +19,7 @@ pub enum ClientError {
     InvalidCredentials,
     ConnectionFailed,
     UnexpectedStatus(u16),
+    OrderNotFound,
 }
 
 impl fmt::Display for ClientError {
@@ -29,6 +30,7 @@ impl fmt::Display for ClientError {
                 f,
                 "Could not connect to Alpaca's paper API. Check your network connection."
             ),
+            Self::OrderNotFound => write!(f, "Alpaca paper order not found (HTTP 404)."),
             Self::UnexpectedStatus(401) => {
                 write!(f, "Alpaca paper API rejected the credentials (HTTP 401).")
             }
@@ -93,6 +95,27 @@ fn orders_request(
     Ok(request)
 }
 
+fn order_request(
+    client: &Client,
+    credentials: &Credentials,
+    options: &OrderGetArgs,
+) -> Result<Request, ClientError> {
+    let mut request = paper_request(client, credentials, PAPER_ORDERS_URL)?;
+    // Append an already validated canonical UUID as an encoded path segment.
+    request
+        .url_mut()
+        .path_segments_mut()
+        .map_err(|_| ClientError::ConnectionFailed)?
+        .push(options.order_id.as_str());
+    if options.nested {
+        request
+            .url_mut()
+            .query_pairs_mut()
+            .append_pair("nested", "true");
+    }
+    Ok(request)
+}
+
 // One authenticated request builder, with identical safeguards for all paper endpoints.
 fn paper_request(
     client: &Client,
@@ -137,6 +160,24 @@ pub fn fetch_orders(
     })
 }
 
+// Single-order HTTP 404 is a specific not-found error, not an auth failure.
+fn order_error(err: ClientError) -> ClientError {
+    match err {
+        ClientError::UnexpectedStatus(404) => ClientError::OrderNotFound,
+        other => other,
+    }
+}
+
+pub fn fetch_order(
+    credentials: &Credentials,
+    options: &OrderGetArgs,
+) -> Result<Vec<u8>, ClientError> {
+    fetch_paper(credentials, |client, credentials| {
+        order_request(client, credentials, options)
+    })
+    .map_err(order_error)
+}
+
 fn fetch_paper(
     credentials: &Credentials,
     build_request: impl FnOnce(&Client, &Credentials) -> Result<Request, ClientError>,
@@ -164,11 +205,12 @@ fn check_status(status: StatusCode) -> Result<(), ClientError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ClientError, account_request, assets_request, check_status, orders_request, paper_client,
-        positions_request,
+        ClientError, account_request, assets_request, check_status, order_error, order_request,
+        orders_request, paper_client, positions_request,
     };
     use crate::cli::{
-        AssetClass, AssetStatus, OrderDirection, OrderStatus, OrderSymbols, OrdersArgs,
+        AssetClass, AssetStatus, OrderDirection, OrderGetArgs, OrderStatus, OrderSymbols,
+        OrdersArgs,
     };
     use crate::credentials::Credentials;
     use reqwest::{Method, StatusCode};
@@ -305,6 +347,78 @@ mod tests {
             orders.url().query(),
             Some("status=all&limit=500&symbols=BTCUSD%2CAAPL&direction=asc")
         );
+    }
+
+    #[test]
+    fn order_get_reuses_paper_auth_and_uses_validated_path_segment() {
+        let client = paper_client().unwrap();
+        let credentials = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+        let options = OrderGetArgs {
+            order_id: uuid.parse().unwrap(),
+            nested: false,
+            output: None,
+        };
+        let request = order_request(&client, &credentials, &options).unwrap();
+        let account = account_request(&client, &credentials).unwrap();
+        assert_eq!(request.method(), Method::GET);
+        assert_eq!(request.url().scheme(), "https");
+        assert_eq!(request.url().host_str(), Some("paper-api.alpaca.markets"));
+        assert_eq!(request.url().port_or_known_default(), Some(443));
+        assert_eq!(
+            request.url().path(),
+            "/v2/orders/9275f66a-0a1b-4a22-8c55-167416c7cf14"
+        );
+        assert_eq!(request.url().query(), None);
+        assert_eq!(request.headers(), account.headers());
+    }
+
+    #[test]
+    fn order_get_only_sends_nested_when_explicitly_requested() {
+        let client = paper_client().unwrap();
+        let credentials = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let options = OrderGetArgs {
+            order_id: "9275f66a-0a1b-4a22-8c55-167416c7cf14".parse().unwrap(),
+            nested: true,
+            output: Some("order.json".into()),
+        };
+        let request = order_request(&client, &credentials, &options).unwrap();
+        assert_eq!(request.url().query(), Some("nested=true"));
+        assert_eq!(
+            request.url().path_segments().unwrap().next_back(),
+            Some(options.order_id.as_str())
+        );
+    }
+
+    #[test]
+    fn order_get_distinguishes_not_found_from_other_errors() {
+        assert_eq!(
+            order_error(ClientError::UnexpectedStatus(404)),
+            ClientError::OrderNotFound
+        );
+        assert_eq!(
+            ClientError::OrderNotFound.to_string(),
+            "Alpaca paper order not found (HTTP 404)."
+        );
+        assert_eq!(
+            order_error(ClientError::UnexpectedStatus(401)),
+            ClientError::UnexpectedStatus(401)
+        );
+        assert_eq!(
+            order_error(ClientError::ConnectionFailed),
+            ClientError::ConnectionFailed
+        );
+        assert_eq!(
+            check_status(StatusCode::NOT_FOUND),
+            Err(ClientError::UnexpectedStatus(404))
+        );
+        assert!(!ClientError::OrderNotFound.to_string().contains("secret"));
     }
 
     #[test]
