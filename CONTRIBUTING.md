@@ -13,8 +13,10 @@ Thanks for your interest in this **unofficial** community project for Alpaca API
 Use this repository's pinned toolchain and run:
 
 ```sh
-cargo build
-cargo test
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked --all-targets
+cargo build --locked --release
 ```
 
 Please add regression tests for bug fixes and tests for new behavior. Document any manual verification in the PR.
