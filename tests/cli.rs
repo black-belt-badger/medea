@@ -48,6 +48,50 @@ fn missing_positions_output_path_is_invalid_cli() {
 }
 
 #[test]
+fn help_lists_assets_command() {
+    let result = cli(&["--help"]);
+    assert!(result.status.success());
+    assert!(String::from_utf8_lossy(&result.stdout).contains("assets"));
+}
+
+#[test]
+fn assets_help_lists_filters_and_output() {
+    let result = cli(&["assets", "--help"]);
+    assert!(result.status.success());
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(stdout.contains("--asset-class"));
+    assert!(stdout.contains("--status"));
+    assert!(stdout.contains("--out"));
+    assert!(stdout.contains("us_equity"));
+}
+
+#[test]
+fn missing_assets_credentials_are_reported_without_any_response() {
+    let result = cli(&["assets"]);
+    assert!(!result.status.success());
+    assert!(
+        String::from_utf8_lossy(&result.stderr)
+            .contains("Missing environment variable: APCA_API_KEY_ID")
+    );
+    assert!(result.stdout.is_empty());
+}
+
+#[test]
+fn invalid_assets_filters_and_missing_option_values_fail_cli() {
+    for args in [
+        vec!["assets", "--asset-class", "other"],
+        vec!["assets", "--status", "other"],
+        vec!["assets", "--out"],
+        vec!["assets", "--status"],
+        vec!["assets", "--asset-class"],
+    ] {
+        let result = cli(&args);
+        assert!(!result.status.success());
+        assert!(result.stdout.is_empty());
+    }
+}
+
+#[test]
 fn account_help_lists_output_option() {
     let result = cli(&["account", "--help"]);
     assert!(result.status.success());

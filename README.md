@@ -8,7 +8,7 @@
 
 **Medea** is an unofficial Rust CLI developed alongside [Kirke](https://github.com/black-belt-badger/kirke), its Haskell counterpart. Both aim for the same user-facing Alpaca API behavior while remaining idiomatic in their respective languages.
 
-**Current scope: read-only Alpaca paper account information and open positions.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
+**Current scope: read-only Alpaca paper account information, open positions, and asset discovery.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ Medea reads **only** these environment variables:
 - `APCA_API_KEY_ID`
 - `APCA_API_SECRET_KEY`
 
-The requests use the Alpaca authentication headers over HTTPS to `GET https://paper-api.alpaca.markets/v2/account` and `GET https://paper-api.alpaca.markets/v2/positions`. It has a 20-second timeout, does not follow redirects, and never connects to the live trading endpoint.
+The requests use the Alpaca authentication headers over HTTPS to `GET /v2/account`, `GET /v2/positions`, and `GET /v2/assets` on `https://paper-api.alpaca.markets`. It has a 20-second timeout, does not follow redirects, and never connects to the live trading endpoint.
 
 You can set them directly in your shell, or prepare a private file outside the repository:
 
@@ -130,9 +130,40 @@ The file uses the same private, atomic output procedure as `account --out` (typi
 
 The endpoint has no symbol filter in this command. **No orders are placed and positions are never closed.** See the [Alpaca positions API reference](https://docs.alpaca.markets/us/reference/getallopenpositions).
 
+## Assets: crypto by default
+
+List crypto assets (explicit default):
+
+```sh
+medea assets
+```
+
+Alpaca's own default is to list US equities when `asset_class` is omitted; Medea instead sends `asset_class=crypto` explicitly. Choose the class and status:
+
+```sh
+medea assets --asset-class us_equity
+medea assets --status active
+medea assets --asset-class crypto --status inactive
+medea assets --status all
+```
+
+`--asset-class` accepts `crypto` or `us_equity`. `--status` accepts `active`, `inactive`, or `all`; the omitted status means no filter. The command displays the symbol, class, status, name, tradability, and fractional-trading eligibility when provided. It prints `No matching assets.` for an empty response.
+
+Save the full original JSON array with private, atomic file replacement:
+
+```sh
+mkdir -p output
+chmod 700 output
+medea assets --asset-class crypto --status active --out output/assets.json
+```
+
+On Unix, the saved file has `0600` permissions. The directory must exist. Unknown future provider fields remain preserved in the output file. This command makes no state-changing or trading requests.
+
+See [Alpaca's GET /v2/assets reference](https://docs.alpaca.markets/us/reference/get-v2-assets-1).
+
 ## Paper integration check (maintainers)
 
-The explicit script `scripts/it.sh` runs the real **paper-only** account and positions commands, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
+The explicit script `scripts/it.sh` runs the real **paper-only** account, positions, and assets commands, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
 
 On a trusted Linux machine with `jq`, `stat`, and paper credentials:
 

@@ -7,6 +7,8 @@ Versions use [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Added
+- `medea assets` lists crypto assets explicitly by default, with typed asset-class and status filters.
+- `medea assets --out PATH` preserves complete assets JSON privately; offline and real paper API tests cover query construction, JSON decoding, and empty results.
 - `medea positions` lists all open Alpaca paper account positions for crypto and equities, with exact decimal strings and readable empty-portfolio handling.
 - `medea positions --out PATH` saves the original JSON array atomically with owner-only permissions.
 - Offline tests for typed position decoding, missing and null values, request security, CLI parsing and output.

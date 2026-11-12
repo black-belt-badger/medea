@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser, PartialEq, Eq)]
 #[command(
@@ -19,6 +19,8 @@ pub enum Command {
     Account(OutputArgs),
     /// List all open positions in the Alpaca paper account.
     Positions(OutputArgs),
+    /// List available Alpaca paper assets (crypto by default).
+    Assets(AssetsArgs),
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]
@@ -28,9 +30,55 @@ pub struct OutputArgs {
     pub output: Option<PathBuf>,
 }
 
+#[derive(Debug, Args, PartialEq, Eq)]
+pub struct AssetsArgs {
+    /// Asset class: crypto (default) or us_equity.
+    #[arg(long = "asset-class", value_enum, default_value_t = AssetClass::Crypto)]
+    pub asset_class: AssetClass,
+    /// Filter by active, inactive, or all (omitted by default).
+    #[arg(long, value_enum)]
+    pub status: Option<AssetStatus>,
+    /// Write the complete JSON response to PATH.
+    #[arg(long = "out", value_name = "PATH")]
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AssetClass {
+    Crypto,
+    #[value(name = "us_equity")]
+    UsEquity,
+}
+
+impl AssetClass {
+    pub fn as_query(self) -> &'static str {
+        match self {
+            Self::Crypto => "crypto",
+            Self::UsEquity => "us_equity",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AssetStatus {
+    Active,
+    Inactive,
+    All,
+}
+
+impl AssetStatus {
+    pub fn as_query(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Inactive => "inactive",
+            Self::All => "all",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Command, OutputArgs};
+    use super::{AssetClass, AssetStatus, AssetsArgs, Cli, Command, OutputArgs};
     use clap::Parser;
 
     #[test]
@@ -65,6 +113,77 @@ mod tests {
                 output: Some("positions.json".into())
             })
         );
+    }
+
+    #[test]
+    fn assets_default_to_explicit_crypto() {
+        let cli = Cli::try_parse_from(["medea", "assets"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Assets(AssetsArgs {
+                asset_class: AssetClass::Crypto,
+                status: None,
+                output: None
+            })
+        );
+    }
+
+    #[test]
+    fn parses_assets_filters_and_json_output() {
+        let cli = Cli::try_parse_from([
+            "medea",
+            "assets",
+            "--asset-class",
+            "us_equity",
+            "--status",
+            "active",
+            "--out",
+            "assets.json",
+        ])
+        .unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Assets(AssetsArgs {
+                asset_class: AssetClass::UsEquity,
+                status: Some(AssetStatus::Active),
+                output: Some("assets.json".into())
+            })
+        );
+    }
+
+    #[test]
+    fn accepts_all_available_status_filter_values() {
+        let cli = Cli::try_parse_from(["medea", "assets", "--status", "all"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Assets(AssetsArgs {
+                asset_class: AssetClass::Crypto,
+                status: Some(AssetStatus::All),
+                output: None
+            })
+        );
+        let cli = Cli::try_parse_from(["medea", "assets", "--status", "inactive"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Assets(AssetsArgs {
+                asset_class: AssetClass::Crypto,
+                status: Some(AssetStatus::Inactive),
+                output: None
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_assets_filters_and_missing_values() {
+        for args in [
+            vec!["medea", "assets", "--asset-class", "other"],
+            vec!["medea", "assets", "--status", "other"],
+            vec!["medea", "assets", "--out"],
+            vec!["medea", "assets", "--asset-class"],
+            vec!["medea", "assets", "--status"],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
     }
 
     #[test]
