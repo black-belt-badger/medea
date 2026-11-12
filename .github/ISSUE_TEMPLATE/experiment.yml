@@ -1,0 +1,36 @@
+name: Experiment proposal
+description: Explore a technical hypothesis without committing to a product feature.
+title: "[Experiment] "
+labels:
+  - experiment
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Experiments should be falsifiable and small enough to evaluate. Share sanitized examples; never disclose trading credentials or private account data.
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis
+      description: What do we expect to learn or demonstrate?
+    validations:
+      required: true
+  - type: textarea
+    id: method
+    attributes:
+      label: Method
+      description: Proposed implementation, test data, and comparison or baseline.
+    validations:
+      required: true
+  - type: textarea
+    id: success
+    attributes:
+      label: Success and failure criteria
+      description: What observations would support or falsify the hypothesis?
+    validations:
+      required: true
+  - type: textarea
+    id: deliverable
+    attributes:
+      label: Deliverable
+      description: Benchmark, code, design note, or decision record.

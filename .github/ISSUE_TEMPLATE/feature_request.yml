@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest a user-facing improvement or new API capability.
+title: "[Feature] "
+labels:
+  - feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please start with the user problem, not only a proposed implementation. Never include real Alpaca credentials or account information.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What would you like to accomplish, and what is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the CLI or library API from a user's perspective.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How would we know this feature is working?
+    validations:
+      required: true
+  - type: dropdown
+    id: applicability
+    attributes:
+      label: Implementation scope
+      options:
+        - This repository only
+        - Both Haskell and Rust
+        - Not sure yet
+    validations:
+      required: true
