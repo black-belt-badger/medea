@@ -8,6 +8,7 @@ mkdir -p output
 chmod 700 output
 
 # Only source a trusted paper-credentials file, never checked into Git.
+# shellcheck source=/dev/null
 source "${MEDEA_CREDENTIALS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/medea/credentials}"
 
 cargo build --locked --release --quiet
