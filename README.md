@@ -12,19 +12,27 @@
 - Linux or Unix-like system for owner-only JSON output permissions.
 - An [Alpaca paper account](https://alpaca.markets/) for authenticated commands. Offline tests do not require one.
 
-## Build and test
+## Build, test, and install
 
 ```sh
 git clone https://github.com/black-belt-badger/medea.git
 cd medea
+./scripts/ci.sh
+medea --help
+```
+
+The local script checks formatting, runs Clippy and all tests, builds an optimized executable, then installs or updates `medea` in Cargo's user binary directory (normally `~/.cargo/bin`). Ensure that directory is on your `PATH` to run `medea` from anywhere. Re-run the script after updating the source to install a newer build.
+
+For individual checks:
+
+```sh
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked --all-targets
 cargo build --locked --release
-./target/release/medea --help
 ```
 
-The same checks run in GitHub Actions on pull requests and `main` pushes.
+GitHub Actions runs the same checks on pull requests and `main` pushes but does not install the CLI globally. The local script does not run the credential-dependent paper API test; use `scripts/it.sh` explicitly for that.
 
 ## Paper credentials
 
