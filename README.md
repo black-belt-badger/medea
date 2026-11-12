@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/fancy.png" alt="Medea — crucible knot logo and wordmark" width="760">
+</p>
+
 # Medea — Rust CLI for Alpaca's paper Trading API
 
 [![Rust CI](https://github.com/black-belt-badger/medea/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/black-belt-badger/medea/actions/workflows/rust-ci.yml)
