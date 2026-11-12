@@ -32,3 +32,7 @@ Never commit or paste Alpaca API keys, secrets, or real paper/live account paylo
 ## Scope
 
 Use the labels `feature`, `bug`, `experiment`, `refactoring`, and `infrastructure` to help classify work. Issues and PRs should be understandable to someone encountering this repository for the first time.
+
+## Releases
+
+Maintainers: see [RELEASING.md](RELEASING.md) for versioning, checks, tagging, and GitHub Releases.
