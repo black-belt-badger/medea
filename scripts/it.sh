@@ -22,6 +22,9 @@ cargo build --locked --release --quiet
 ./target/release/medea assets --help > /dev/null
 ./target/release/medea assets --status active > ./output/assets-summary.txt
 ./target/release/medea assets --status active --out ./output/assets.json > ./output/assets-written.txt
+./target/release/medea orders --help > /dev/null
+./target/release/medea orders --status all --limit 10 > ./output/orders-summary.txt
+./target/release/medea orders --status all --limit 10 --out ./output/orders.json > ./output/orders-written.txt
 
 test -s ./output/account-summary.txt
 grep -q '^Medea — Alpaca paper account$' ./output/account-summary.txt
@@ -41,5 +44,11 @@ grep -q '^Medea — Alpaca paper assets$' ./output/assets-summary.txt
 jq -e 'type == "array" and all(.[]; .class == "crypto" and (.tradable | type == "boolean"))' ./output/assets.json > /dev/null
 test "$(stat -c '%a' ./output/assets.json)" = 600
 test "$(stat -c '%a' ./output/assets-summary.txt)" = 600
+
+test -s ./output/orders-summary.txt
+grep -q '^Medea — Alpaca paper orders$' ./output/orders-summary.txt
+jq -e 'type == "array" and (length <= 10) and all(.[]; .id and .client_order_id and .symbol and .status)' ./output/orders.json > /dev/null
+test "$(stat -c '%a' ./output/orders.json)" = 600
+test "$(stat -c '%a' ./output/orders-summary.txt)" = 600
 
 echo "Medea: Alpaca paper API integration checks passed"

@@ -7,6 +7,8 @@ Versions use [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Added
+- `medea orders` lists read-only paper orders with typed status, limit, symbols and direction filters; financial values retain exact decimal strings.
+- `medea orders --out PATH` saves complete order JSON privately and atomically, with deterministic offline tests and explicit paper integration.
 - `medea assets` lists crypto assets explicitly by default, with typed asset-class and status filters.
 - `medea assets --out PATH` preserves complete assets JSON privately; offline and real paper API tests cover query construction, JSON decoding, and empty results.
 - `medea positions` lists all open Alpaca paper account positions for crypto and equities, with exact decimal strings and readable empty-portfolio handling.

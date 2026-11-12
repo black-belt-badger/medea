@@ -8,7 +8,7 @@
 
 **Medea** is an unofficial Rust CLI developed alongside [Kirke](https://github.com/black-belt-badger/kirke), its Haskell counterpart. Both aim for the same user-facing Alpaca API behavior while remaining idiomatic in their respective languages.
 
-**Current scope: read-only Alpaca paper account information, open positions, and asset discovery.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
+**Current scope: read-only Alpaca paper account information, open positions, asset discovery, and order history.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ Medea reads **only** these environment variables:
 - `APCA_API_KEY_ID`
 - `APCA_API_SECRET_KEY`
 
-The requests use the Alpaca authentication headers over HTTPS to `GET /v2/account`, `GET /v2/positions`, and `GET /v2/assets` on `https://paper-api.alpaca.markets`. It has a 20-second timeout, does not follow redirects, and never connects to the live trading endpoint.
+The requests use the Alpaca authentication headers over HTTPS to `GET /v2/account`, `GET /v2/positions`, `GET /v2/assets`, and `GET /v2/orders` on `https://paper-api.alpaca.markets`. It has a 20-second timeout, does not follow redirects, and never connects to the live trading endpoint.
 
 You can set them directly in your shell, or prepare a private file outside the repository:
 
@@ -161,9 +161,34 @@ On Unix, the saved file has `0600` permissions. The directory must exist. Unknow
 
 See [Alpaca's GET /v2/assets reference](https://docs.alpaca.markets/us/reference/get-v2-assets-1).
 
+## Orders: read-only history and filters
+
+List open orders, newest first, or specify filters:
+
+```sh
+medea orders
+medea orders --status all --limit 10
+medea orders --status closed --direction asc
+medea orders --symbols BTCUSD,ETHUSD,AAPL --limit 50
+```
+
+- `--status open|closed|all` defaults to `open`; `--direction asc|desc` defaults to `desc`.
+- `--limit 1..500` is optional (Alpaca's default is 50 orders). `--symbols` takes comma-separated trading symbols such as `BTCUSD`, not `BTC/USD`.
+- Values are validated before networking. Prices and quantities are preserved as **strings**, never converted to floating point. Nullable fields print `not provided`.
+- An empty response prints `No matching orders.`. This endpoint lists a single page; it does not automatically paginate.
+
+To save the **complete original JSON response** instead of a terminal summary:
+
+```sh
+mkdir -p output && chmod 700 output
+medea orders --status all --limit 10 --out output/orders.json
+```
+
+The file is atomically replaced with owner-only permissions (normally `0600` on Unix). Order activity is sensitive. **This command cannot place, modify or cancel orders** and never uses the live trading endpoint. See [Alpaca GET /v2/orders](https://docs.alpaca.markets/us/reference/getallorders-1). Medea and [Kirke](https://github.com/black-belt-badger/kirke) intentionally expose matching CLI filters and readable fields.
+
 ## Paper integration check (maintainers)
 
-The explicit script `scripts/it.sh` runs the real **paper-only** account, positions, and assets commands, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
+The explicit script `scripts/it.sh` runs the real **paper-only** account, positions, assets, and orders commands, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
 
 On a trusted Linux machine with `jq`, `stat`, and paper credentials:
 
@@ -181,7 +206,7 @@ Do not paste the script's private outputs into CI, an issue, or a release.
 
 ## Roadmap, contributions, and safety
 
-Next: account state, historical crypto market data, and carefully controlled paper trading. **Live trading, order placement, streaming, and market-data commands are not part of this version.**
+Next: account state, historical crypto market data, and carefully controlled paper trading. **Live trading, order submission/cancellation, streaming, and market-data commands are not part of this version.**
 
 Medea is available under the [BSD 3-Clause License](LICENSE), copyright © 2026 Marek Dudek. See the [GitHub Releases](https://github.com/black-belt-badger/medea/releases) page for source releases and version notes.
 
