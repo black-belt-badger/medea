@@ -2,6 +2,14 @@
 name = "medea"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.99.1"
+authors = ["Marek Dudek"]
+description = "Unofficial read-only Rust CLI for Alpaca paper trading accounts"
+license = "BSD-3-Clause"
+repository = "https://github.com/black-belt-badger/medea"
+readme = "README.md"
+keywords = ["alpaca", "cli", "paper-trading", "trading"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
