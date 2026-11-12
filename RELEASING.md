@@ -7,7 +7,7 @@ Medea is an **unofficial** Rust client and CLI for Alpaca's APIs. The repository
 - Use [Semantic Versioning](https://semver.org/) with three components: `MAJOR.MINOR.PATCH`.
 - Keep `Cargo.toml` and Git tags aligned: package `0.1.0` -> tag `v0.1.0`.
 - Before `1.0.0`, breaking changes can occur, but document them in `CHANGELOG.md`.
-- Releases are independent from Haskell [Alpaca](https://github.com/black-belt-badger/alpaca), which uses four-component Haskell PVP versions.
+- Releases are independent from Haskell [Kirke](https://github.com/black-belt-badger/kirke), which uses four-component Haskell PVP versions.
 - Track the first release in its GitHub milestone and in shared Project #7.
 
 ## Release checklist
