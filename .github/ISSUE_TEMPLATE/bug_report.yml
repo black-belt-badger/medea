@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible problem with the library or CLI.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve this project. Never include API keys, secrets, or real account data in a report. If the issue involves a security vulnerability, do not publish its details in a public issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and any error messages, with secrets redacted.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest possible example, command, or test.
+      placeholder: |
+        1. Run ...
+        2. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Version and environment
+      description: Commit or release, operating system, compiler version, and relevant tool versions.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Sanitized logs or relevant links, if any.
