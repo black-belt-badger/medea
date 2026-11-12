@@ -10,11 +10,17 @@ Create a **dedicated fine-grained personal access token** in GitHub:
 
 - Resource owner: `black-belt-badger`
 - Repository access: only `medea`
-- Repository permission: `Issues: Read` (and `Contents: Read`, if requested)
+- Repository permissions: `Issues: Read-only` and `Pull requests: Read-only`
 - Organization permission: `Projects: Read and write`
 
 Store it as an **Actions repository secret** named `ADD_TO_PROJECT_PAT`
-under Medea > Settings > Secrets and variables > Actions.
+under Medea > Settings > Secrets and variables > Actions (New repository secret).
+Configure an expiration and rotate the token when necessary.
+
+The workflow cannot operate before the secret has been set. The token must
+belong to an account with permission to edit organization Project #7.
+Check the secret **name**, never its value, using the repository's Actions
+secrets settings.
 
 Do **not** put the token in source code, issue comments or logs. Do not
 reuse your normal, broadly scoped GitHub CLI token.
