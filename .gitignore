@@ -1,3 +1,15 @@
 /target
 /.idea/
 *.iml
+
+# Private account JSON and maintainer integration output
+/output/
+
+# Local secrets, logs, and private configuration
+.env
+.env.*
+!.env.example
+config/local/
+*.pem
+*.key
+*.log
