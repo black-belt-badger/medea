@@ -10,14 +10,13 @@ Thanks for your interest in this **unofficial** community project for Alpaca API
 
 ## Build and test
 
-Use this repository's pinned toolchain and run:
+Use this repository's pinned toolchain. To run the local checks and install the latest executable:
 
 ```sh
-cargo fmt --all -- --check
-cargo clippy --locked --all-targets --all-features -- -D warnings
-cargo test --locked --all-targets
-cargo build --locked --release
+./scripts/ci.sh
 ```
+
+This checks formatting, runs Clippy and tests, builds a release binary, and installs `medea` to Cargo's user bin directory. GitHub CI runs the checks without a global installation. You can also run any Cargo command separately as described in the README.
 
 Please add regression tests for bug fixes and tests for new behavior. Document any manual verification in the PR.
 
