@@ -10,12 +10,13 @@ Thanks for your interest in this **unofficial** community project for Alpaca API
 
 ## Build and test
 
-Use this repository's pinned toolchain and run:
+Use this repository's pinned toolchain. To run the local checks and install the latest executable:
 
 ```sh
-cargo build
-cargo test
+./scripts/ci.sh
 ```
+
+This checks formatting, runs Clippy and tests, builds a release binary, and installs `medea` to Cargo's user bin directory. GitHub CI runs the checks without a global installation. You can also run any Cargo command separately as described in the README.
 
 Please add regression tests for bug fixes and tests for new behavior. Document any manual verification in the PR.
 
@@ -27,7 +28,7 @@ Please add regression tests for bug fixes and tests for new behavior. Document a
 
 ## Privacy and security
 
-Never commit or paste Alpaca API keys, secrets, or real paper/live account payloads. Use local environment variables or ignored configuration files and redact logs before posting them. Do not disclose potential security vulnerabilities in public issues; contact maintainers privately.
+Never commit or paste Alpaca API keys, secrets, or real paper/live account payloads. Use local environment variables or ignored configuration files and redact logs before posting them. Do not disclose potential security vulnerabilities in public issues; use [GitHub private vulnerability reporting](SECURITY.md).
 
 ## Scope
 

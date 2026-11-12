@@ -1,29 +1,30 @@
 # Releasing Medea (maintainers)
 
-Medea is an **unofficial** Rust client and CLI for Alpaca's APIs. The repository is currently private, and the first release should wait until the paper account feature works.
+Medea is an **unofficial** Rust client and CLI for Alpaca's APIs. The repository is public and the first paper-account feature has been implemented. The first GitHub release is still pending final checks.
 
 ## Versioning
 
 - Use [Semantic Versioning](https://semver.org/) with three components: `MAJOR.MINOR.PATCH`.
 - Keep `Cargo.toml` and Git tags aligned: package `0.1.0` -> tag `v0.1.0`.
 - Before `1.0.0`, breaking changes can occur, but document them in `CHANGELOG.md`.
-- Releases are independent from Haskell [Alpaca](https://github.com/black-belt-badger/alpaca), which uses four-component Haskell PVP versions.
+- Releases are independent from Haskell [Kirke](https://github.com/black-belt-badger/kirke), which uses four-component Haskell PVP versions.
 - Track the first release in its GitHub milestone and in shared Project #7.
 
 ## Release checklist
 
 1. Complete the release milestone, especially **account feature parity**, a tested CLI, a clear README, an explicit license and confirmed copyright/maintainer attribution.
 2. Update `CHANGELOG.md` with a dated `0.1.0` heading and update `Cargo.toml` to the intended version.
-3. Confirm the owner has approved release/public visibility separately. **A GitHub release does not imply that the private repository should become public.**
+3. Public visibility was approved by the repository owner on November 12, 2026. Confirm separately that the owner wants to publish the release tag and GitHub Release.
 4. From a clean working tree, verify:
 
    ```sh
    cargo fmt --all -- --check
-   cargo build --release
-   cargo test
+   cargo clippy --locked --all-targets --all-features -- -D warnings
+   cargo test --locked --all-targets
+   cargo build --locked --release
    ```
 
-5. Manually exercise the Alpaca **paper-only** account command on a trusted machine with private environment-based credentials; record success without publishing secrets or real account data. Once Rust CI exists, require its passing check before tagging.
+5. Manually exercise the Alpaca **paper-only** account command on a trusted machine with private environment-based credentials; record success without publishing secrets or real account data. Require the passing **Rust CI (1.99.1)** check on the exact release commit before tagging.
 6. Review release notes for actual behavior, limitations, supported platforms, and the unofficial status of this implementation.
 
 ## Create a tag and GitHub Release
