@@ -3,7 +3,7 @@ use std::path::Path;
 
 use tempfile::Builder;
 
-pub fn save_account_json(path: &Path, bytes: &[u8]) -> io::Result<()> {
+pub fn save_private_json(path: &Path, bytes: &[u8]) -> io::Result<()> {
     // tempfile uses an owner-only file on Unix, in the destination directory.
     // Persist renames it over the destination, so a preexisting public file
     // cannot accidentally retain its old permissions.
@@ -12,7 +12,7 @@ pub fn save_account_json(path: &Path, bytes: &[u8]) -> io::Result<()> {
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     let mut temporary = Builder::new()
-        .prefix(".medea-account-")
+        .prefix(".medea-json-")
         .tempfile_in(directory)?;
     temporary.write_all(bytes)?;
     temporary.flush()?;
@@ -22,7 +22,7 @@ pub fn save_account_json(path: &Path, bytes: &[u8]) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::save_account_json;
+    use super::save_private_json;
     use std::fs;
 
     #[test]
@@ -30,7 +30,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("account.json");
         let response = br#"{"status":"ACTIVE","extra":123}"#;
-        save_account_json(&path, response).unwrap();
+        save_private_json(&path, response).unwrap();
         assert_eq!(fs::read(&path).unwrap(), response);
     }
 
@@ -39,7 +39,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("account.json");
         fs::write(&path, "old").unwrap();
-        save_account_json(&path, b"new").unwrap();
+        save_private_json(&path, b"new").unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"new");
     }
 
@@ -47,7 +47,7 @@ mod tests {
     fn missing_directory_reports_error() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("does-not-exist").join("account.json");
-        assert!(save_account_json(&path, b"test").is_err());
+        assert!(save_private_json(&path, b"test").is_err());
     }
 
     #[cfg(unix)]
@@ -59,7 +59,7 @@ mod tests {
         let path = dir.path().join("account.json");
         fs::write(&path, b"old").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
-        save_account_json(&path, b"new").unwrap();
+        save_private_json(&path, b"new").unwrap();
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
     }

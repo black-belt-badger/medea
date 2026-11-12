@@ -16,11 +16,13 @@ pub struct Cli {
 #[derive(Debug, Subcommand, PartialEq, Eq)]
 pub enum Command {
     /// Fetch Alpaca account information.
-    Account(AccountArgs),
+    Account(OutputArgs),
+    /// List all open positions in the Alpaca paper account.
+    Positions(OutputArgs),
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]
-pub struct AccountArgs {
+pub struct OutputArgs {
     /// Write the complete JSON response to PATH.
     #[arg(long = "out", value_name = "PATH")]
     pub output: Option<PathBuf>,
@@ -28,13 +30,13 @@ pub struct AccountArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::{AccountArgs, Cli, Command};
+    use super::{Cli, Command, OutputArgs};
     use clap::Parser;
 
     #[test]
     fn parses_account() {
         let cli = Cli::try_parse_from(["medea", "account"]).unwrap();
-        assert_eq!(cli.command, Command::Account(AccountArgs { output: None }));
+        assert_eq!(cli.command, Command::Account(OutputArgs { output: None }));
     }
 
     #[test]
@@ -42,10 +44,37 @@ mod tests {
         let cli = Cli::try_parse_from(["medea", "account", "--out", "account.json"]).unwrap();
         assert_eq!(
             cli.command,
-            Command::Account(AccountArgs {
+            Command::Account(OutputArgs {
                 output: Some("account.json".into())
             })
         );
+    }
+
+    #[test]
+    fn parses_positions() {
+        let cli = Cli::try_parse_from(["medea", "positions"]).unwrap();
+        assert_eq!(cli.command, Command::Positions(OutputArgs { output: None }));
+    }
+
+    #[test]
+    fn parses_positions_output() {
+        let cli = Cli::try_parse_from(["medea", "positions", "--out", "positions.json"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Positions(OutputArgs {
+                output: Some("positions.json".into())
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_missing_positions_output_path() {
+        assert!(Cli::try_parse_from(["medea", "positions", "--out"]).is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_positions_options() {
+        assert!(Cli::try_parse_from(["medea", "positions", "--unexpected"]).is_err());
     }
 
     #[test]
