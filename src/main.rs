@@ -1,4 +1,5 @@
 mod account;
+mod assets;
 mod cli;
 mod client;
 mod credentials;
@@ -8,8 +9,9 @@ mod positions;
 use clap::Parser;
 
 use account::{decode_account, render_account_summary};
+use assets::{decode_assets, render_assets_summary};
 use cli::{Cli, Command};
-use client::{fetch_account, fetch_positions};
+use client::{fetch_account, fetch_assets, fetch_positions};
 use credentials::load_credentials;
 use output::save_private_json;
 use positions::{decode_positions, render_positions_summary};
@@ -51,6 +53,23 @@ fn run(cli: Cli) -> Result<(), String> {
                     save_private_json(&path, &response)
                         .map_err(|err| format!("Could not save positions JSON: {err}"))?;
                     println!("Saved complete positions JSON to {}", path.display());
+                }
+            }
+            Ok(())
+        }
+        Command::Assets(options) => {
+            let credentials = load_credentials().map_err(|err| err.to_string())?;
+            let response = fetch_assets(&credentials, options.asset_class, options.status)
+                .map_err(|err| err.to_string())?;
+            // Validate even when exporting complete provider JSON.
+            let assets = decode_assets(&response)
+                .map_err(|_| "Invalid Alpaca assets response.".to_owned())?;
+            match options.output {
+                None => print!("{}", render_assets_summary(&assets)),
+                Some(path) => {
+                    save_private_json(&path, &response)
+                        .map_err(|err| format!("Could not save assets JSON: {err}"))?;
+                    println!("Saved complete assets JSON to {}", path.display());
                 }
             }
             Ok(())

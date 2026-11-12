@@ -6,10 +6,12 @@ use reqwest::blocking::{Client, Request};
 use reqwest::header::HeaderValue;
 use reqwest::redirect::Policy;
 
+use crate::cli::{AssetClass, AssetStatus};
 use crate::credentials::Credentials;
 
 const PAPER_ACCOUNT_URL: &str = "https://paper-api.alpaca.markets/v2/account";
 const PAPER_POSITIONS_URL: &str = "https://paper-api.alpaca.markets/v2/positions";
+const PAPER_ASSETS_URL: &str = "https://paper-api.alpaca.markets/v2/assets";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClientError {
@@ -52,6 +54,24 @@ fn positions_request(client: &Client, credentials: &Credentials) -> Result<Reque
     paper_request(client, credentials, PAPER_POSITIONS_URL)
 }
 
+fn assets_request(
+    client: &Client,
+    credentials: &Credentials,
+    class: AssetClass,
+    status: Option<AssetStatus>,
+) -> Result<Request, ClientError> {
+    let mut request = paper_request(client, credentials, PAPER_ASSETS_URL)?;
+    // The query values are typed allowlists; url::form_urlencoded handles
+    // proper percent encoding. Never interpolate user input into the URL.
+    let mut query = request.url_mut().query_pairs_mut();
+    query.append_pair("asset_class", class.as_query());
+    if let Some(status) = status {
+        query.append_pair("status", status.as_query());
+    }
+    drop(query);
+    Ok(request)
+}
+
 // One authenticated request builder, with identical safeguards for all paper endpoints.
 fn paper_request(
     client: &Client,
@@ -77,9 +97,19 @@ pub fn fetch_positions(credentials: &Credentials) -> Result<Vec<u8>, ClientError
     fetch_paper(credentials, positions_request)
 }
 
+pub fn fetch_assets(
+    credentials: &Credentials,
+    class: AssetClass,
+    status: Option<AssetStatus>,
+) -> Result<Vec<u8>, ClientError> {
+    fetch_paper(credentials, |client, credentials| {
+        assets_request(client, credentials, class, status)
+    })
+}
+
 fn fetch_paper(
     credentials: &Credentials,
-    build_request: fn(&Client, &Credentials) -> Result<Request, ClientError>,
+    build_request: impl FnOnce(&Client, &Credentials) -> Result<Request, ClientError>,
 ) -> Result<Vec<u8>, ClientError> {
     let client = paper_client()?;
     let request = build_request(&client, credentials)?;
@@ -103,7 +133,10 @@ fn check_status(status: StatusCode) -> Result<(), ClientError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, account_request, check_status, paper_client, positions_request};
+    use super::{
+        ClientError, account_request, assets_request, check_status, paper_client, positions_request,
+    };
+    use crate::cli::{AssetClass, AssetStatus};
     use crate::credentials::Credentials;
     use reqwest::{Method, StatusCode};
 
@@ -139,6 +172,60 @@ mod tests {
         assert_eq!(positions.url().path(), "/v2/positions");
         assert_eq!(positions.url().port_or_known_default(), Some(443));
         assert_eq!(positions.headers(), account.headers());
+    }
+
+    #[test]
+    fn assets_default_to_explicit_crypto_with_shared_paper_auth() {
+        let client = paper_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let assets = assets_request(&client, &creds, AssetClass::Crypto, None).unwrap();
+        let account = account_request(&client, &creds).unwrap();
+        assert_eq!(assets.method(), Method::GET);
+        assert_eq!(assets.url().scheme(), "https");
+        assert_eq!(assets.url().host_str(), Some("paper-api.alpaca.markets"));
+        assert_eq!(assets.url().path(), "/v2/assets");
+        assert_eq!(assets.url().query(), Some("asset_class=crypto"));
+        assert_eq!(assets.url().port_or_known_default(), Some(443));
+        assert_eq!(assets.headers(), account.headers());
+    }
+
+    #[test]
+    fn assets_support_class_and_status_query_filters() {
+        let client = paper_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let assets = assets_request(
+            &client,
+            &creds,
+            AssetClass::UsEquity,
+            Some(AssetStatus::Active),
+        )
+        .unwrap();
+        assert_eq!(
+            assets.url().query(),
+            Some("asset_class=us_equity&status=active")
+        );
+
+        let assets = assets_request(
+            &client,
+            &creds,
+            AssetClass::Crypto,
+            Some(AssetStatus::Inactive),
+        )
+        .unwrap();
+        assert_eq!(
+            assets.url().query(),
+            Some("asset_class=crypto&status=inactive")
+        );
+
+        let assets =
+            assets_request(&client, &creds, AssetClass::Crypto, Some(AssetStatus::All)).unwrap();
+        assert_eq!(assets.url().query(), Some("asset_class=crypto&status=all"));
     }
 
     #[test]
