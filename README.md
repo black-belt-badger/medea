@@ -124,6 +124,6 @@ Do not paste the script's private outputs into CI, an issue, or a release.
 
 Next: account state, historical crypto market data, and carefully controlled paper trading. **Live trading, order placement, streaming, and market-data commands are not part of this version.**
 
-Medea is released under the [BSD 3-Clause License](LICENSE), copyright © 2026 Marek Dudek. The source is public, but no `v0.1.0` GitHub release has been published yet.
+Medea is available under the [BSD 3-Clause License](LICENSE), copyright © 2026 Marek Dudek. See the [GitHub Releases](https://github.com/black-belt-badger/medea/releases) page for source releases and version notes.
 
-See [GitHub Issues](https://github.com/black-belt-badger/medea/issues), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) for private vulnerability reporting, and [RELEASING.md](RELEASING.md) for the release procedure. The first release milestone tracks final account parity and publication checks.
+See [GitHub Issues](https://github.com/black-belt-badger/medea/issues), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) for private vulnerability reporting, and [RELEASING.md](RELEASING.md) for the release procedure. Release milestones track feature parity and publication checks.
