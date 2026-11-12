@@ -8,7 +8,7 @@
 
 **Medea** is an unofficial Rust CLI developed alongside [Kirke](https://github.com/black-belt-badger/kirke), its Haskell counterpart. Both aim for the same user-facing Alpaca API behavior while remaining idiomatic in their respective languages.
 
-**Current scope: read-only Alpaca paper account information, open positions, asset discovery, and order history.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
+**Current scope: read-only Alpaca paper account information, open positions, asset discovery, and order history/details.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ Medea reads **only** these environment variables:
 - `APCA_API_KEY_ID`
 - `APCA_API_SECRET_KEY`
 
-The requests use the Alpaca authentication headers over HTTPS to `GET /v2/account`, `GET /v2/positions`, `GET /v2/assets`, and `GET /v2/orders` on `https://paper-api.alpaca.markets`. It has a 20-second timeout, does not follow redirects, and never connects to the live trading endpoint.
+The requests use the Alpaca authentication headers over HTTPS to `GET /v2/account`, `GET /v2/positions`, `GET /v2/assets`, `GET /v2/orders`, and `GET /v2/orders/{order_id}` on `https://paper-api.alpaca.markets`. It has a 20-second timeout, does not follow redirects, and never connects to the live trading endpoint.
 
 You can set them directly in your shell, or prepare a private file outside the repository:
 
@@ -186,9 +186,27 @@ medea orders --status all --limit 10 --out output/orders.json
 
 The file is atomically replaced with owner-only permissions (normally `0600` on Unix). Order activity is sensitive. **This command cannot place, modify or cancel orders** and never uses the live trading endpoint. See [Alpaca GET /v2/orders](https://docs.alpaca.markets/us/reference/getallorders-1). Medea and [Kirke](https://github.com/black-belt-badger/kirke) intentionally expose matching CLI filters and readable fields.
 
+## Order details: read-only lookup by server UUID
+
+Look up an individual paper order using its server-issued `id` (not its `client_order_id`):
+
+```sh
+medea order get 9275f66a-0a1b-4a22-8c55-167416c7cf14
+medea order get 9275f66a-0a1b-4a22-8c55-167416c7cf14 --nested
+medea order get 9275f66a-0a1b-4a22-8c55-167416c7cf14 --out output/order.json
+```
+
+The UUID above is an **illustrative placeholder**, not a real order. Use an ID from your paper account's `medea orders --out` response. `medea order --help` and `medea order get --help` show the available options.
+
+Medea requires a canonical 36-character UUID and rejects malformed IDs, path separators, query strings and fragments *before* loading credentials. `--nested` sends the optional Alpaca `nested=true` query parameter to roll up multi-leg orders; without it no query string is sent. A missing order produces a dedicated `Alpaca paper order not found (HTTP 404)` message, distinct from authentication, transport or decoding failures.
+
+A successful lookup returns a **JSON object**, not an array. The readable view reuses the order-listing fields and preserves decimal strings and nullability. `--out PATH` saves the **complete original JSON**, including extra fields or nested `legs`, by atomic replacement with owner-only permissions (normally `0600`). The parent directory must exist.
+
+Like Kirke, this command is **read-only and paper-only**. It does not place, modify or cancel orders. Official documentation: [GET /v2/orders/{order_id}](https://docs.alpaca.markets/us/reference/getorderbyorderid-1).
+
 ## Paper integration check (maintainers)
 
-The explicit script `scripts/it.sh` runs the real **paper-only** account, positions, assets, and orders commands, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
+The explicit script `scripts/it.sh` runs the real **paper-only** account, positions, assets, order-listing, and single-order commands, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
 
 On a trusted Linux machine with `jq`, `stat`, and paper credentials:
 

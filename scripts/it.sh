@@ -51,4 +51,20 @@ jq -e 'type == "array" and (length <= 10) and all(.[]; .id and .client_order_id 
 test "$(stat -c '%a' ./output/orders.json)" = 600
 test "$(stat -c '%a' ./output/orders-summary.txt)" = 600
 
+# A new paper account may have no orders. With an existing order, exercise
+# single-order GET using the validated server-assigned UUID from the list.
+./target/release/medea order --help > /dev/null
+./target/release/medea order get --help > /dev/null
+if jq -e 'length > 0' ./output/orders.json > /dev/null; then
+  order_id="$(jq -r '.[0].id' ./output/orders.json)"
+  ./target/release/medea order get "$order_id" > ./output/order-summary.txt
+  ./target/release/medea order get "$order_id" --nested --out ./output/order.json > ./output/order-written.txt
+  grep -q '^Medea — Alpaca paper order$' ./output/order-summary.txt
+  jq -e --arg id "$order_id" '.id == $id and .client_order_id and .symbol and .status' ./output/order.json > /dev/null
+  test "$(stat -c '%a' ./output/order.json)" = 600
+  test "$(stat -c '%a' ./output/order-summary.txt)" = 600
+else
+  echo 'Medea: no paper orders available; skipping single-order API check'
+fi
+
 echo "Medea: Alpaca paper API integration checks passed"

@@ -11,10 +11,10 @@ use clap::Parser;
 
 use account::{decode_account, render_account_summary};
 use assets::{decode_assets, render_assets_summary};
-use cli::{Cli, Command};
-use client::{fetch_account, fetch_assets, fetch_orders, fetch_positions};
+use cli::{Cli, Command, OrderCommand};
+use client::{fetch_account, fetch_assets, fetch_order, fetch_orders, fetch_positions};
 use credentials::load_credentials;
-use orders::{decode_orders, render_orders_summary};
+use orders::{decode_order, decode_orders, render_order_summary, render_orders_summary};
 use output::save_private_json;
 use positions::{decode_positions, render_positions_summary};
 
@@ -55,6 +55,24 @@ fn run(cli: Cli) -> Result<(), String> {
                     save_private_json(&path, &response)
                         .map_err(|err| format!("Could not save positions JSON: {err}"))?;
                     println!("Saved complete positions JSON to {}", path.display());
+                }
+            }
+            Ok(())
+        }
+        Command::Order {
+            command: OrderCommand::Get(options),
+        } => {
+            let credentials = load_credentials().map_err(|err| err.to_string())?;
+            let response = fetch_order(&credentials, &options).map_err(|err| err.to_string())?;
+            // Decode the single JSON object before displaying or exporting it.
+            let order =
+                decode_order(&response).map_err(|_| "Invalid Alpaca order response.".to_owned())?;
+            match options.output {
+                None => print!("{}", render_order_summary(&order)),
+                Some(path) => {
+                    save_private_json(&path, &response)
+                        .map_err(|err| format!("Could not save order JSON: {err}"))?;
+                    println!("Saved complete order JSON to {}", path.display());
                 }
             }
             Ok(())

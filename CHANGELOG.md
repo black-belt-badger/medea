@@ -7,6 +7,8 @@ Versions use [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Added
+- `medea order get ORDER_ID` retrieves an individual paper order by validated UUID, with optional `--nested` and private `--out PATH` for full provider JSON.
+- Reuses the existing typed order decoder and summary fields; separate HTTP 404 handling, offline tests and a paper API integration check.
 - `medea orders` lists read-only paper orders with typed status, limit, symbols and direction filters; financial values retain exact decimal strings.
 - `medea orders --out PATH` saves complete order JSON privately and atomically, with deterministic offline tests and explicit paper integration.
 - `medea assets` lists crypto assets explicitly by default, with typed asset-class and status filters.
