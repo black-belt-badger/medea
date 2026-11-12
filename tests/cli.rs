@@ -92,6 +92,55 @@ fn invalid_assets_filters_and_missing_option_values_fail_cli() {
 }
 
 #[test]
+fn help_lists_orders_command() {
+    let result = cli(&["--help"]);
+    assert!(result.status.success());
+    assert!(String::from_utf8_lossy(&result.stdout).contains("orders"));
+}
+
+#[test]
+fn orders_help_lists_filters_and_output() {
+    let result = cli(&["orders", "--help"]);
+    assert!(result.status.success());
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    for flag in ["--status", "--limit", "--symbols", "--direction", "--out"] {
+        assert!(stdout.contains(flag), "Missing {flag}");
+    }
+}
+
+#[test]
+fn missing_orders_credentials_are_reported_without_any_response() {
+    let result = cli(&["orders"]);
+    assert!(!result.status.success());
+    assert!(
+        String::from_utf8_lossy(&result.stderr)
+            .contains("Missing environment variable: APCA_API_KEY_ID")
+    );
+    assert!(result.stdout.is_empty());
+}
+
+#[test]
+fn invalid_orders_filters_and_missing_values_fail_cli() {
+    for args in [
+        vec!["orders", "--status", "filled"],
+        vec!["orders", "--direction", "up"],
+        vec!["orders", "--limit", "0"],
+        vec!["orders", "--limit", "501"],
+        vec!["orders", "--symbols", "BTC/USD"],
+        vec!["orders", "--symbols", "BTCUSD,,AAPL"],
+        vec!["orders", "--out"],
+        vec!["orders", "--limit"],
+        vec!["orders", "--status"],
+        vec!["orders", "--symbols"],
+        vec!["orders", "--direction"],
+    ] {
+        let result = cli(&args);
+        assert!(!result.status.success(), "{args:?}");
+        assert!(result.stdout.is_empty(), "{args:?}");
+    }
+}
+
+#[test]
 fn account_help_lists_output_option() {
     let result = cli(&["account", "--help"]);
     assert!(result.status.success());

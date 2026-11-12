@@ -3,6 +3,7 @@ mod assets;
 mod cli;
 mod client;
 mod credentials;
+mod orders;
 mod output;
 mod positions;
 
@@ -11,8 +12,9 @@ use clap::Parser;
 use account::{decode_account, render_account_summary};
 use assets::{decode_assets, render_assets_summary};
 use cli::{Cli, Command};
-use client::{fetch_account, fetch_assets, fetch_positions};
+use client::{fetch_account, fetch_assets, fetch_orders, fetch_positions};
 use credentials::load_credentials;
+use orders::{decode_orders, render_orders_summary};
 use output::save_private_json;
 use positions::{decode_positions, render_positions_summary};
 
@@ -53,6 +55,22 @@ fn run(cli: Cli) -> Result<(), String> {
                     save_private_json(&path, &response)
                         .map_err(|err| format!("Could not save positions JSON: {err}"))?;
                     println!("Saved complete positions JSON to {}", path.display());
+                }
+            }
+            Ok(())
+        }
+        Command::Orders(options) => {
+            let credentials = load_credentials().map_err(|err| err.to_string())?;
+            let response = fetch_orders(&credentials, &options).map_err(|err| err.to_string())?;
+            // Always validate the provider response, including for --out.
+            let orders = decode_orders(&response)
+                .map_err(|_| "Invalid Alpaca orders response.".to_owned())?;
+            match options.output {
+                None => print!("{}", render_orders_summary(&orders)),
+                Some(path) => {
+                    save_private_json(&path, &response)
+                        .map_err(|err| format!("Could not save orders JSON: {err}"))?;
+                    println!("Saved complete orders JSON to {}", path.display());
                 }
             }
             Ok(())

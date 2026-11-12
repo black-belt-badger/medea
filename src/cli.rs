@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
@@ -21,6 +22,8 @@ pub enum Command {
     Positions(OutputArgs),
     /// List available Alpaca paper assets (crypto by default).
     Assets(AssetsArgs),
+    /// List and filter Alpaca paper orders (read-only).
+    Orders(OrdersArgs),
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]
@@ -76,9 +79,94 @@ impl AssetStatus {
     }
 }
 
+#[derive(Debug, Args, PartialEq, Eq)]
+pub struct OrdersArgs {
+    /// Order status: open (default), closed, or all.
+    #[arg(long, value_enum, default_value_t = OrderStatus::Open)]
+    pub status: OrderStatus,
+    /// Maximum orders: 1..500 (defaults to Alpaca's 50).
+    #[arg(long, value_name = "N", value_parser = parse_order_limit)]
+    pub limit: Option<u16>,
+    /// Comma-separated symbols, e.g. BTCUSD,ETHUSD,AAPL.
+    #[arg(long, value_name = "SYMBOLS")]
+    pub symbols: Option<OrderSymbols>,
+    /// Chronological order: asc or desc (default).
+    #[arg(long, value_enum, default_value_t = OrderDirection::Desc)]
+    pub direction: OrderDirection,
+    /// Write the complete unmodified JSON response to PATH.
+    #[arg(long = "out", value_name = "PATH")]
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum OrderStatus {
+    Open,
+    Closed,
+    All,
+}
+
+impl OrderStatus {
+    pub fn as_query(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Closed => "closed",
+            Self::All => "all",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum OrderDirection {
+    Asc,
+    Desc,
+}
+
+impl OrderDirection {
+    pub fn as_query(self) -> &'static str {
+        match self {
+            Self::Asc => "asc",
+            Self::Desc => "desc",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderSymbols(pub Vec<String>);
+
+impl FromStr for OrderSymbols {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let symbols: Vec<String> = value.split(',').map(|s| s.trim().to_owned()).collect();
+        if symbols.iter().all(|symbol| {
+            !symbol.is_empty()
+                && symbol
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+        }) {
+            Ok(Self(symbols))
+        } else {
+            Err("Expected comma-separated symbols such as BTCUSD,ETHUSD,AAPL".into())
+        }
+    }
+}
+
+fn parse_order_limit(value: &str) -> Result<u16, String> {
+    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("Order limit must be between 1 and 500".into());
+    }
+    match value.parse::<u16>() {
+        Ok(n @ 1..=500) => Ok(n),
+        _ => Err("Order limit must be between 1 and 500".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AssetClass, AssetStatus, AssetsArgs, Cli, Command, OutputArgs};
+    use super::{
+        AssetClass, AssetStatus, AssetsArgs, Cli, Command, OrderDirection, OrderStatus,
+        OrderSymbols, OrdersArgs, OutputArgs,
+    };
     use clap::Parser;
 
     #[test]
@@ -184,6 +272,132 @@ mod tests {
         ] {
             assert!(Cli::try_parse_from(args).is_err());
         }
+    }
+
+    #[test]
+    fn orders_default_to_open_desc_with_api_default_limit() {
+        let cli = Cli::try_parse_from(["medea", "orders"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Orders(OrdersArgs {
+                status: OrderStatus::Open,
+                limit: None,
+                symbols: None,
+                direction: OrderDirection::Desc,
+                output: None,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_all_order_filters_and_original_json_output() {
+        let cli = Cli::try_parse_from([
+            "medea",
+            "orders",
+            "--status",
+            "all",
+            "--limit",
+            "500",
+            "--symbols",
+            "BTCUSD, ETHUSD,AAPL",
+            "--direction",
+            "asc",
+            "--out",
+            "orders.json",
+        ])
+        .unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Orders(OrdersArgs {
+                status: OrderStatus::All,
+                limit: Some(500),
+                symbols: Some(OrderSymbols(vec![
+                    "BTCUSD".into(),
+                    "ETHUSD".into(),
+                    "AAPL".into()
+                ])),
+                direction: OrderDirection::Asc,
+                output: Some("orders.json".into()),
+            })
+        );
+    }
+
+    #[test]
+    fn parses_closed_orders_and_minimum_limit() {
+        let cli =
+            Cli::try_parse_from(["medea", "orders", "--status", "closed", "--limit", "1"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Orders(OrdersArgs {
+                status: OrderStatus::Closed,
+                limit: Some(1),
+                symbols: None,
+                direction: OrderDirection::Desc,
+                output: None,
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_order_limits() {
+        for limit in [
+            "",
+            "0",
+            "501",
+            "-1",
+            "1.5",
+            "5x",
+            " 5",
+            "999999999999999999999999",
+        ] {
+            assert!(
+                Cli::try_parse_from(["medea", "orders", "--limit", limit]).is_err(),
+                "{limit:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_order_symbols() {
+        for symbols in [
+            "",
+            "BTCUSD,",
+            ",ETHUSD",
+            "BTCUSD,,ETHUSD",
+            "BTC/USD",
+            "btcUSD",
+            "BTCUSD&status=all",
+        ] {
+            assert!(
+                Cli::try_parse_from(["medea", "orders", "--symbols", symbols]).is_err(),
+                "{symbols:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_order_filters_and_missing_values() {
+        for args in [
+            vec!["medea", "orders", "--status", "filled"],
+            vec!["medea", "orders", "--direction", "up"],
+            vec!["medea", "orders", "--limit"],
+            vec!["medea", "orders", "--status"],
+            vec!["medea", "orders", "--symbols"],
+            vec!["medea", "orders", "--direction"],
+            vec!["medea", "orders", "--out"],
+            vec!["medea", "orders", "--unknown"],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
+    }
+
+    #[test]
+    fn parses_single_symbol_with_dot() {
+        let cli = Cli::try_parse_from(["medea", "orders", "--symbols", "BRK.B"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Orders(OrdersArgs { symbols: Some(OrderSymbols(ref symbols)), .. }) if symbols == &["BRK.B"]
+        ));
     }
 
     #[test]

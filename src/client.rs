@@ -6,12 +6,13 @@ use reqwest::blocking::{Client, Request};
 use reqwest::header::HeaderValue;
 use reqwest::redirect::Policy;
 
-use crate::cli::{AssetClass, AssetStatus};
+use crate::cli::{AssetClass, AssetStatus, OrdersArgs};
 use crate::credentials::Credentials;
 
 const PAPER_ACCOUNT_URL: &str = "https://paper-api.alpaca.markets/v2/account";
 const PAPER_POSITIONS_URL: &str = "https://paper-api.alpaca.markets/v2/positions";
 const PAPER_ASSETS_URL: &str = "https://paper-api.alpaca.markets/v2/assets";
+const PAPER_ORDERS_URL: &str = "https://paper-api.alpaca.markets/v2/orders";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClientError {
@@ -72,6 +73,26 @@ fn assets_request(
     Ok(request)
 }
 
+fn orders_request(
+    client: &Client,
+    credentials: &Credentials,
+    options: &OrdersArgs,
+) -> Result<Request, ClientError> {
+    let mut request = paper_request(client, credentials, PAPER_ORDERS_URL)?;
+    // Typed/validated filters: URL construction percent-encodes reserved characters.
+    let mut query = request.url_mut().query_pairs_mut();
+    query.append_pair("status", options.status.as_query());
+    if let Some(limit) = options.limit {
+        query.append_pair("limit", &limit.to_string());
+    }
+    if let Some(symbols) = &options.symbols {
+        query.append_pair("symbols", &symbols.0.join(","));
+    }
+    query.append_pair("direction", options.direction.as_query());
+    drop(query);
+    Ok(request)
+}
+
 // One authenticated request builder, with identical safeguards for all paper endpoints.
 fn paper_request(
     client: &Client,
@@ -107,6 +128,15 @@ pub fn fetch_assets(
     })
 }
 
+pub fn fetch_orders(
+    credentials: &Credentials,
+    options: &OrdersArgs,
+) -> Result<Vec<u8>, ClientError> {
+    fetch_paper(credentials, |client, credentials| {
+        orders_request(client, credentials, options)
+    })
+}
+
 fn fetch_paper(
     credentials: &Credentials,
     build_request: impl FnOnce(&Client, &Credentials) -> Result<Request, ClientError>,
@@ -134,9 +164,12 @@ fn check_status(status: StatusCode) -> Result<(), ClientError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ClientError, account_request, assets_request, check_status, paper_client, positions_request,
+        ClientError, account_request, assets_request, check_status, orders_request, paper_client,
+        positions_request,
     };
-    use crate::cli::{AssetClass, AssetStatus};
+    use crate::cli::{
+        AssetClass, AssetStatus, OrderDirection, OrderStatus, OrderSymbols, OrdersArgs,
+    };
     use crate::credentials::Credentials;
     use reqwest::{Method, StatusCode};
 
@@ -226,6 +259,52 @@ mod tests {
         let assets =
             assets_request(&client, &creds, AssetClass::Crypto, Some(AssetStatus::All)).unwrap();
         assert_eq!(assets.url().query(), Some("asset_class=crypto&status=all"));
+    }
+
+    #[test]
+    fn orders_use_shared_paper_auth_and_safe_defaults() {
+        let client = paper_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let options = OrdersArgs {
+            status: OrderStatus::Open,
+            limit: None,
+            symbols: None,
+            direction: OrderDirection::Desc,
+            output: None,
+        };
+        let orders = orders_request(&client, &creds, &options).unwrap();
+        let account = account_request(&client, &creds).unwrap();
+        assert_eq!(orders.method(), Method::GET);
+        assert_eq!(orders.url().scheme(), "https");
+        assert_eq!(orders.url().host_str(), Some("paper-api.alpaca.markets"));
+        assert_eq!(orders.url().path(), "/v2/orders");
+        assert_eq!(orders.url().port_or_known_default(), Some(443));
+        assert_eq!(orders.url().query(), Some("status=open&direction=desc"));
+        assert_eq!(orders.headers(), account.headers());
+    }
+
+    #[test]
+    fn orders_encode_symbols_and_all_filters() {
+        let client = paper_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let options = OrdersArgs {
+            status: OrderStatus::All,
+            limit: Some(500),
+            symbols: Some(OrderSymbols(vec!["BTCUSD".into(), "AAPL".into()])),
+            direction: OrderDirection::Asc,
+            output: None,
+        };
+        let orders = orders_request(&client, &creds, &options).unwrap();
+        assert_eq!(
+            orders.url().query(),
+            Some("status=all&limit=500&symbols=BTCUSD%2CAAPL&direction=asc")
+        );
     }
 
     #[test]
