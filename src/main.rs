@@ -58,17 +58,10 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::Positions(options) => {
             let credentials = load_credentials().map_err(|err| err.to_string())?;
             let response = fetch_positions(&credentials).map_err(|err| err.to_string())?;
-            // Always validate the response, including for --out.
-            let positions = decode_positions(&response)
-                .map_err(|_| "Invalid Alpaca positions response.".to_owned())?;
-            match options.output {
-                None => print!("{}", render_positions_summary(&positions)),
-                Some(path) => {
-                    save_private_json(&path, &response)
-                        .map_err(|err| format!("Could not save positions JSON: {err}"))?;
-                    println!("Saved complete positions JSON to {}", path.display());
-                }
-            }
+            print!(
+                "{}",
+                present_positions(&response, options.output.as_deref())?
+            );
             Ok(())
         }
         Command::Order {
@@ -162,6 +155,28 @@ fn present_assets(response: &[u8], output: Option<&Path>) -> Result<String, Stri
 #[path = "account_acceptance_tests.rs"]
 mod account_acceptance_tests;
 
+// One testable boundary for sensitive portfolio output and validation.
+// A malformed upstream payload must never appear on stdout or replace a file.
+fn present_positions(response: &[u8], output: Option<&Path>) -> Result<String, String> {
+    let positions =
+        decode_positions(response).map_err(|_| "Invalid Alpaca positions response.".to_owned())?;
+    match output {
+        None => Ok(render_positions_summary(&positions)),
+        Some(path) => {
+            save_private_json(path, response)
+                .map_err(|err| format!("Could not save positions JSON: {err}"))?;
+            Ok(format!(
+                "Saved complete positions JSON to {}\n",
+                path.display()
+            ))
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "assets_acceptance_tests.rs"]
 mod assets_acceptance_tests;
+
+#[cfg(test)]
+#[path = "positions_acceptance_tests.rs"]
+mod positions_acceptance_tests;
