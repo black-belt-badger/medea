@@ -67,4 +67,21 @@ else
   echo 'Medea: no paper orders available; skipping single-order API check'
 fi
 
-echo "Medea: Alpaca paper API integration checks passed"
+./target/release/medea crypto --help > /dev/null
+./target/release/medea crypto bars --help > /dev/null
+# Two symbols, up to two pages of two bars each: bounded live data check.
+crypto_flags=(--symbols BTC/USD,ETH/USD --timeframe 1Hour \
+  --start 2026-10-02T00:00:00Z --end 2026-10-02T03:00:00Z \
+  --limit 2 --max-pages 2)
+./target/release/medea crypto bars "${crypto_flags[@]}" > ./output/crypto-bars-summary.txt
+./target/release/medea crypto bars "${crypto_flags[@]}" --out ./output/crypto-bars.json > ./output/crypto-bars-written.txt
+./target/release/medea crypto bars "${crypto_flags[@]}" --format jsonl --out ./output/crypto-bars.jsonl > ./output/crypto-bars-jsonl-written.txt
+grep -q '^Medea — Alpaca historical crypto bars$' ./output/crypto-bars-summary.txt
+jq -e '(.pages | type == "array" and length >= 1 and length <= 2) and (.next_page_token == null or (.next_page_token | type == "string"))' ./output/crypto-bars.json > /dev/null
+jq -e 'all(.pages[]; (.bars | type == "object"))' ./output/crypto-bars.json > /dev/null
+test "$(stat -c '%a' ./output/crypto-bars.json)" = 600
+test "$(stat -c '%a' ./output/crypto-bars.jsonl)" = 600
+test -s ./output/crypto-bars.jsonl
+jq -e -c '.symbol and .t and (.o | type == "number") and (.v | type == "number")' ./output/crypto-bars.jsonl > /dev/null
+
+echo "Medea: Alpaca paper and crypto market-data API integration checks passed"

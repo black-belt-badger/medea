@@ -3,6 +3,7 @@ mod assets;
 mod cli;
 mod client;
 mod credentials;
+mod crypto_bars;
 mod orders;
 mod output;
 mod positions;
@@ -11,7 +12,7 @@ use clap::Parser;
 
 use account::{decode_account, render_account_summary};
 use assets::{decode_assets, render_assets_summary};
-use cli::{Cli, Command, OrderCommand};
+use cli::{Cli, Command, CryptoCommand, OrderCommand};
 use client::{fetch_account, fetch_assets, fetch_order, fetch_orders, fetch_positions};
 use credentials::load_credentials;
 use orders::{decode_order, decode_orders, render_order_summary, render_orders_summary};
@@ -27,6 +28,9 @@ fn main() {
 
 fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
+        Command::Crypto {
+            command: CryptoCommand::Bars(options),
+        } => crypto_bars::run_bars(options),
         Command::Account(options) => {
             let credentials = load_credentials().map_err(|err| err.to_string())?;
             let response = fetch_account(&credentials).map_err(|err| err.to_string())?;

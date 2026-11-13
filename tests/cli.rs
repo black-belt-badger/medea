@@ -202,6 +202,209 @@ fn invalid_order_uuid_is_rejected_before_trying_credentials() {
 }
 
 #[test]
+fn crypto_help_lists_historical_bars() {
+    let top = cli(&["--help"]);
+    assert!(top.status.success());
+    assert!(String::from_utf8_lossy(&top.stdout).contains("crypto"));
+    let sub = cli(&["crypto", "--help"]);
+    assert!(sub.status.success());
+    assert!(String::from_utf8_lossy(&sub.stdout).contains("bars"));
+}
+
+#[test]
+fn crypto_bars_help_lists_filters_paging_and_formats() {
+    let result = cli(&["crypto", "bars", "--help"]);
+    assert!(result.status.success());
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    for flag in [
+        "--symbols",
+        "--location",
+        "--timeframe",
+        "--start",
+        "--end",
+        "--limit",
+        "--sort",
+        "--max-pages",
+        "--page-token",
+        "--format",
+        "--out",
+    ] {
+        assert!(stdout.contains(flag), "Missing {flag}");
+    }
+}
+
+#[test]
+fn missing_crypto_credentials_reported_without_secret_or_response() {
+    let result = cli(&[
+        "crypto",
+        "bars",
+        "--symbols",
+        "BTC/USD",
+        "--timeframe",
+        "1Min",
+    ]);
+    assert!(!result.status.success());
+    assert!(
+        String::from_utf8_lossy(&result.stderr)
+            .contains("Missing environment variable: APCA_API_KEY_ID")
+    );
+    assert!(result.stdout.is_empty());
+}
+
+#[test]
+fn invalid_crypto_arguments_fail_before_loading_credentials() {
+    for args in [
+        vec!["crypto", "bars"],
+        vec!["crypto", "bars", "--symbols", "BTC/USD"],
+        vec!["crypto", "bars", "--timeframe", "1Min"],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTCUSD",
+            "--timeframe",
+            "1Min",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "0Min",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+            "--limit",
+            "0",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+            "--limit",
+            "10001",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+            "--max-pages",
+            "21",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+            "--location",
+            "../us",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+            "--start",
+            "yesterday",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+            "--format",
+            "csv",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+            "--sort",
+            "random",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+            "--page-token",
+            "",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+            "--out",
+        ],
+        vec![
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+            "--unknown",
+        ],
+    ] {
+        let result = cli(&args);
+        assert!(!result.status.success(), "{args:?}");
+        assert!(result.stdout.is_empty(), "{args:?}");
+        assert!(
+            !String::from_utf8_lossy(&result.stderr).contains("APCA_API_KEY_ID"),
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn reverse_crypto_time_range_fails_before_loading_credentials() {
+    let result = cli(&[
+        "crypto",
+        "bars",
+        "--symbols",
+        "BTC/USD",
+        "--timeframe",
+        "1Min",
+        "--start",
+        "2026-10-04",
+        "--end",
+        "2026-10-02",
+    ]);
+    assert!(!result.status.success());
+    assert!(
+        String::from_utf8_lossy(&result.stderr).contains("--start must not be later than --end")
+    );
+    assert!(!String::from_utf8_lossy(&result.stderr).contains("APCA_API_KEY_ID"));
+    assert!(result.stdout.is_empty());
+}
+
+#[test]
 fn account_help_lists_output_option() {
     let result = cli(&["account", "--help"]);
     assert!(result.status.success());

@@ -8,11 +8,13 @@ use reqwest::redirect::Policy;
 
 use crate::cli::{AssetClass, AssetStatus, OrderGetArgs, OrdersArgs};
 use crate::credentials::Credentials;
+use crate::crypto_bars::CryptoBarsArgs;
 
 const PAPER_ACCOUNT_URL: &str = "https://paper-api.alpaca.markets/v2/account";
 const PAPER_POSITIONS_URL: &str = "https://paper-api.alpaca.markets/v2/positions";
 const PAPER_ASSETS_URL: &str = "https://paper-api.alpaca.markets/v2/assets";
 const PAPER_ORDERS_URL: &str = "https://paper-api.alpaca.markets/v2/orders";
+const CRYPTO_DATA_ROOT: &str = "https://data.alpaca.markets/v1beta3/crypto/";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClientError {
@@ -41,7 +43,7 @@ impl fmt::Display for ClientError {
     }
 }
 
-fn paper_client() -> Result<Client, ClientError> {
+fn authenticated_client() -> Result<Client, ClientError> {
     Client::builder()
         .timeout(Duration::from_secs(20))
         .redirect(Policy::none()) // Never forward authentication headers to redirects.
@@ -50,11 +52,11 @@ fn paper_client() -> Result<Client, ClientError> {
 }
 
 fn account_request(client: &Client, credentials: &Credentials) -> Result<Request, ClientError> {
-    paper_request(client, credentials, PAPER_ACCOUNT_URL)
+    authenticated_request(client, credentials, PAPER_ACCOUNT_URL)
 }
 
 fn positions_request(client: &Client, credentials: &Credentials) -> Result<Request, ClientError> {
-    paper_request(client, credentials, PAPER_POSITIONS_URL)
+    authenticated_request(client, credentials, PAPER_POSITIONS_URL)
 }
 
 fn assets_request(
@@ -63,7 +65,7 @@ fn assets_request(
     class: AssetClass,
     status: Option<AssetStatus>,
 ) -> Result<Request, ClientError> {
-    let mut request = paper_request(client, credentials, PAPER_ASSETS_URL)?;
+    let mut request = authenticated_request(client, credentials, PAPER_ASSETS_URL)?;
     // The query values are typed allowlists; url::form_urlencoded handles
     // proper percent encoding. Never interpolate user input into the URL.
     let mut query = request.url_mut().query_pairs_mut();
@@ -80,7 +82,7 @@ fn orders_request(
     credentials: &Credentials,
     options: &OrdersArgs,
 ) -> Result<Request, ClientError> {
-    let mut request = paper_request(client, credentials, PAPER_ORDERS_URL)?;
+    let mut request = authenticated_request(client, credentials, PAPER_ORDERS_URL)?;
     // Typed/validated filters: URL construction percent-encodes reserved characters.
     let mut query = request.url_mut().query_pairs_mut();
     query.append_pair("status", options.status.as_query());
@@ -95,12 +97,39 @@ fn orders_request(
     Ok(request)
 }
 
+fn crypto_bars_request(
+    client: &Client,
+    credentials: &Credentials,
+    options: &CryptoBarsArgs,
+    token: Option<&str>,
+) -> Result<Request, ClientError> {
+    let endpoint = format!("{CRYPTO_DATA_ROOT}{}/bars", options.location.as_path());
+    let mut request = authenticated_request(client, credentials, &endpoint)?;
+    // URL's query builder escapes slashes, commas, timestamps and opaque tokens.
+    let mut query = request.url_mut().query_pairs_mut();
+    query.append_pair("symbols", &options.symbols.0.join(","));
+    query.append_pair("timeframe", options.timeframe.as_str());
+    if let Some(start) = &options.start {
+        query.append_pair("start", start.as_str());
+    }
+    if let Some(end) = &options.end {
+        query.append_pair("end", end.as_str());
+    }
+    query.append_pair("limit", &options.limit.to_string());
+    query.append_pair("sort", options.sort.as_query());
+    if let Some(token) = token {
+        query.append_pair("page_token", token);
+    }
+    drop(query);
+    Ok(request)
+}
+
 fn order_request(
     client: &Client,
     credentials: &Credentials,
     options: &OrderGetArgs,
 ) -> Result<Request, ClientError> {
-    let mut request = paper_request(client, credentials, PAPER_ORDERS_URL)?;
+    let mut request = authenticated_request(client, credentials, PAPER_ORDERS_URL)?;
     // Append an already validated canonical UUID as an encoded path segment.
     request
         .url_mut()
@@ -117,7 +146,7 @@ fn order_request(
 }
 
 // One authenticated request builder, with identical safeguards for all paper endpoints.
-fn paper_request(
+fn authenticated_request(
     client: &Client,
     credentials: &Credentials,
     url: &str,
@@ -133,12 +162,22 @@ fn paper_request(
         .map_err(|_| ClientError::ConnectionFailed)
 }
 
+pub fn fetch_crypto_bars_page(
+    credentials: &Credentials,
+    options: &CryptoBarsArgs,
+    token: Option<&str>,
+) -> Result<Vec<u8>, ClientError> {
+    fetch_authenticated(credentials, |client, credentials| {
+        crypto_bars_request(client, credentials, options, token)
+    })
+}
+
 pub fn fetch_account(credentials: &Credentials) -> Result<Vec<u8>, ClientError> {
-    fetch_paper(credentials, account_request)
+    fetch_authenticated(credentials, account_request)
 }
 
 pub fn fetch_positions(credentials: &Credentials) -> Result<Vec<u8>, ClientError> {
-    fetch_paper(credentials, positions_request)
+    fetch_authenticated(credentials, positions_request)
 }
 
 pub fn fetch_assets(
@@ -146,7 +185,7 @@ pub fn fetch_assets(
     class: AssetClass,
     status: Option<AssetStatus>,
 ) -> Result<Vec<u8>, ClientError> {
-    fetch_paper(credentials, |client, credentials| {
+    fetch_authenticated(credentials, |client, credentials| {
         assets_request(client, credentials, class, status)
     })
 }
@@ -155,7 +194,7 @@ pub fn fetch_orders(
     credentials: &Credentials,
     options: &OrdersArgs,
 ) -> Result<Vec<u8>, ClientError> {
-    fetch_paper(credentials, |client, credentials| {
+    fetch_authenticated(credentials, |client, credentials| {
         orders_request(client, credentials, options)
     })
 }
@@ -172,17 +211,17 @@ pub fn fetch_order(
     credentials: &Credentials,
     options: &OrderGetArgs,
 ) -> Result<Vec<u8>, ClientError> {
-    fetch_paper(credentials, |client, credentials| {
+    fetch_authenticated(credentials, |client, credentials| {
         order_request(client, credentials, options)
     })
     .map_err(order_error)
 }
 
-fn fetch_paper(
+fn fetch_authenticated(
     credentials: &Credentials,
     build_request: impl FnOnce(&Client, &Credentials) -> Result<Request, ClientError>,
 ) -> Result<Vec<u8>, ClientError> {
-    let client = paper_client()?;
+    let client = authenticated_client()?;
     let request = build_request(&client, credentials)?;
     let response = client
         .execute(request)
@@ -205,19 +244,85 @@ fn check_status(status: StatusCode) -> Result<(), ClientError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ClientError, account_request, assets_request, check_status, order_error, order_request,
-        orders_request, paper_client, positions_request,
+        ClientError, account_request, assets_request, authenticated_client, check_status,
+        crypto_bars_request, order_error, order_request, orders_request, positions_request,
     };
     use crate::cli::{
         AssetClass, AssetStatus, OrderDirection, OrderGetArgs, OrderStatus, OrderSymbols,
         OrdersArgs,
     };
     use crate::credentials::Credentials;
+    use crate::crypto_bars::{BarsFormat, BarsSort, CryptoBarsArgs, CryptoLocation};
     use reqwest::{Method, StatusCode};
+
+    fn sample_bars_args() -> CryptoBarsArgs {
+        CryptoBarsArgs {
+            symbols: "BTC/USD,ETH/USD".parse().unwrap(),
+            location: CryptoLocation::Us,
+            timeframe: "1Hour".parse().unwrap(),
+            start: Some("2026-10-02T00:00:00.123456789Z".parse().unwrap()),
+            end: Some("2026-10-02T02:00:00Z".parse().unwrap()),
+            limit: 25,
+            sort: BarsSort::Asc,
+            max_pages: 2,
+            page_token: None,
+            format: BarsFormat::Json,
+            output: None,
+        }
+    }
+
+    #[test]
+    fn crypto_bar_request_uses_data_host_and_shared_authenticated_https() {
+        let client = authenticated_client().unwrap();
+        let credentials = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let options = sample_bars_args();
+        let bars = crypto_bars_request(&client, &credentials, &options, None).unwrap();
+        let account = account_request(&client, &credentials).unwrap();
+        assert_eq!(bars.method(), Method::GET);
+        assert_eq!(bars.url().scheme(), "https");
+        assert_eq!(bars.url().host_str(), Some("data.alpaca.markets"));
+        assert_eq!(bars.url().port_or_known_default(), Some(443));
+        assert_eq!(bars.url().path(), "/v1beta3/crypto/us/bars");
+        assert_eq!(bars.headers(), account.headers());
+        assert_eq!(
+            bars.url().query(),
+            Some(
+                "symbols=BTC%2FUSD%2CETH%2FUSD&timeframe=1Hour&start=2026-10-02T00%3A00%3A00.123456789Z&end=2026-10-02T02%3A00%3A00Z&limit=25&sort=asc"
+            )
+        );
+    }
+
+    #[test]
+    fn crypto_bar_request_encodes_tokens_and_allowlisted_location() {
+        let client = authenticated_client().unwrap();
+        let credentials = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let mut options = sample_bars_args();
+        options.symbols = "SOL/USD".parse().unwrap();
+        options.timeframe = "1Min".parse().unwrap();
+        options.location = CryptoLocation::Eu1;
+        options.start = None;
+        options.end = None;
+        options.limit = 10000;
+        options.sort = BarsSort::Desc;
+        let bars = crypto_bars_request(&client, &credentials, &options, Some("ABC+/==")).unwrap();
+        assert_eq!(bars.url().path(), "/v1beta3/crypto/eu-1/bars");
+        assert_eq!(
+            bars.url().query(),
+            Some(
+                "symbols=SOL%2FUSD&timeframe=1Min&limit=10000&sort=desc&page_token=ABC%2B%2F%3D%3D"
+            )
+        );
+    }
 
     #[test]
     fn paper_account_request_is_https_get_with_headers() {
-        let client = paper_client().unwrap();
+        let client = authenticated_client().unwrap();
         let creds = Credentials {
             key_id: "example-key".into(),
             secret_key: "example-secret".into(),
@@ -234,7 +339,7 @@ mod tests {
 
     #[test]
     fn paper_positions_request_reuses_https_get_and_authentication() {
-        let client = paper_client().unwrap();
+        let client = authenticated_client().unwrap();
         let creds = Credentials {
             key_id: "example-key".into(),
             secret_key: "example-secret".into(),
@@ -251,7 +356,7 @@ mod tests {
 
     #[test]
     fn assets_default_to_explicit_crypto_with_shared_paper_auth() {
-        let client = paper_client().unwrap();
+        let client = authenticated_client().unwrap();
         let creds = Credentials {
             key_id: "example-key".into(),
             secret_key: "example-secret".into(),
@@ -269,7 +374,7 @@ mod tests {
 
     #[test]
     fn assets_support_class_and_status_query_filters() {
-        let client = paper_client().unwrap();
+        let client = authenticated_client().unwrap();
         let creds = Credentials {
             key_id: "example-key".into(),
             secret_key: "example-secret".into(),
@@ -305,7 +410,7 @@ mod tests {
 
     #[test]
     fn orders_use_shared_paper_auth_and_safe_defaults() {
-        let client = paper_client().unwrap();
+        let client = authenticated_client().unwrap();
         let creds = Credentials {
             key_id: "example-key".into(),
             secret_key: "example-secret".into(),
@@ -330,7 +435,7 @@ mod tests {
 
     #[test]
     fn orders_encode_symbols_and_all_filters() {
-        let client = paper_client().unwrap();
+        let client = authenticated_client().unwrap();
         let creds = Credentials {
             key_id: "example-key".into(),
             secret_key: "example-secret".into(),
@@ -351,7 +456,7 @@ mod tests {
 
     #[test]
     fn order_get_reuses_paper_auth_and_uses_validated_path_segment() {
-        let client = paper_client().unwrap();
+        let client = authenticated_client().unwrap();
         let credentials = Credentials {
             key_id: "example-key".into(),
             secret_key: "example-secret".into(),
@@ -378,7 +483,7 @@ mod tests {
 
     #[test]
     fn order_get_only_sends_nested_when_explicitly_requested() {
-        let client = paper_client().unwrap();
+        let client = authenticated_client().unwrap();
         let credentials = Credentials {
             key_id: "example-key".into(),
             secret_key: "example-secret".into(),
@@ -454,7 +559,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_header_value_without_echoing_it() {
-        let client = paper_client().unwrap();
+        let client = authenticated_client().unwrap();
         let creds = Credentials {
             key_id: "example-key".into(),
             secret_key: "secret\nvalue".into(),

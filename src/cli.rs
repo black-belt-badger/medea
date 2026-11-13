@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use crate::crypto_bars::CryptoBarsArgs;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser, PartialEq, Eq)]
@@ -29,6 +30,17 @@ pub enum Command {
         #[command(subcommand)]
         command: OrderCommand,
     },
+    /// Read historical crypto market data (not trading activity).
+    Crypto {
+        #[command(subcommand)]
+        command: CryptoCommand,
+    },
+}
+
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum CryptoCommand {
+    /// Fetch bounded historical crypto OHLCV bars.
+    Bars(CryptoBarsArgs),
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]
@@ -221,10 +233,229 @@ impl FromStr for OrderId {
 #[cfg(test)]
 mod tests {
     use super::{
-        AssetClass, AssetStatus, AssetsArgs, Cli, Command, OrderCommand, OrderDirection,
-        OrderGetArgs, OrderId, OrderStatus, OrderSymbols, OrdersArgs, OutputArgs,
+        AssetClass, AssetStatus, AssetsArgs, Cli, Command, CryptoCommand, OrderCommand,
+        OrderDirection, OrderGetArgs, OrderId, OrderStatus, OrderSymbols, OrdersArgs, OutputArgs,
     };
+    use crate::crypto_bars::{BarsFormat, BarsSort, CryptoLocation};
     use clap::Parser;
+
+    #[test]
+    fn crypto_bars_have_one_page_and_us_location_by_default() {
+        let parsed = Cli::try_parse_from([
+            "medea",
+            "crypto",
+            "bars",
+            "--symbols",
+            "BTC/USD,ETH/USD",
+            "--timeframe",
+            "1Hour",
+        ])
+        .unwrap();
+        let Command::Crypto {
+            command: CryptoCommand::Bars(options),
+        } = parsed.command
+        else {
+            panic!("expected crypto bars command");
+        };
+        assert_eq!(options.symbols.0, vec!["BTC/USD", "ETH/USD"]);
+        assert_eq!(options.location, CryptoLocation::Us);
+        assert_eq!(options.timeframe.as_str(), "1Hour");
+        assert_eq!(options.limit, 1000);
+        assert_eq!(options.sort, BarsSort::Asc);
+        assert_eq!(options.max_pages, 1);
+        assert!(options.start.is_none());
+        assert!(options.end.is_none());
+        assert!(options.page_token.is_none());
+        assert_eq!(options.format, BarsFormat::Json);
+        assert!(options.output.is_none());
+    }
+
+    #[test]
+    fn parses_all_crypto_bars_options_and_jsonl() {
+        let parsed = Cli::try_parse_from([
+            "medea",
+            "crypto",
+            "bars",
+            "--symbols",
+            "SOL/USD",
+            "--location",
+            "us-1",
+            "--timeframe",
+            "5Min",
+            "--start",
+            "2026-10-02T00:00:00Z",
+            "--end",
+            "2026-10-02T02:00:00Z",
+            "--limit",
+            "10000",
+            "--sort",
+            "desc",
+            "--max-pages",
+            "20",
+            "--page-token",
+            "ABC+/==",
+            "--format",
+            "jsonl",
+            "--out",
+            "bars.jsonl",
+        ])
+        .unwrap();
+        let Command::Crypto {
+            command: CryptoCommand::Bars(options),
+        } = parsed.command
+        else {
+            panic!("expected crypto bars command");
+        };
+        assert_eq!(options.symbols.0, vec!["SOL/USD"]);
+        assert_eq!(options.location, CryptoLocation::Us1);
+        assert_eq!(options.timeframe.as_str(), "5Min");
+        assert_eq!(options.start.unwrap().as_str(), "2026-10-02T00:00:00Z");
+        assert_eq!(options.end.unwrap().as_str(), "2026-10-02T02:00:00Z");
+        assert_eq!(options.limit, 10000);
+        assert_eq!(options.sort, BarsSort::Desc);
+        assert_eq!(options.max_pages, 20);
+        assert_eq!(options.page_token.unwrap().as_str(), "ABC+/==");
+        assert_eq!(options.format, BarsFormat::Jsonl);
+        assert_eq!(options.output, Some("bars.jsonl".into()));
+    }
+
+    #[test]
+    fn rejects_missing_and_invalid_crypto_bars_arguments() {
+        for args in [
+            vec!["medea", "crypto"],
+            vec!["medea", "crypto", "bars"],
+            vec!["medea", "crypto", "bars", "--symbols", "BTC/USD"],
+            vec!["medea", "crypto", "bars", "--timeframe", "1Min"],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+                "--limit",
+                "10001",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+                "--limit",
+                "0",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+                "--max-pages",
+                "21",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "0Min",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+                "--location",
+                "hostile",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD,,ETH/USD",
+                "--timeframe",
+                "1Min",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+                "--start",
+                "yesterday",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+                "--format",
+                "csv",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+                "--sort",
+                "random",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+                "--page-token",
+                "",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+                "--out",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "bars",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+                "--unknown",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(args.clone()).is_err(), "{args:?}");
+        }
+    }
 
     #[test]
     fn parses_account() {
