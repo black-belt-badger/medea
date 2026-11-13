@@ -89,11 +89,17 @@ jq -e 'type == "array" and all(.[];
 if jq -e 'length > 0' ./output/orders.json > /dev/null; then
   order_id="$(jq -r '.[0].id' ./output/orders.json)"
   ./target/release/medea order get "$order_id" > ./output/order-summary.txt
+  ./target/release/medea order get "$order_id" --nested > ./output/order-nested-summary.txt
   ./target/release/medea order get "$order_id" --nested --out ./output/order.json > ./output/order-written.txt
   grep -q '^Medea — Alpaca paper order$' ./output/order-summary.txt
-  jq -e --arg id "$order_id" '.id == $id and .client_order_id and .symbol and .status' ./output/order.json > /dev/null
+  grep -q '^Medea — Alpaca paper order$' ./output/order-nested-summary.txt
+  jq -e --arg id "$order_id" '(.id | ascii_downcase) == ($id | ascii_downcase) and
+    (.status | type) == "string" and
+    (.legs == null or ((.legs | type) == "array" and
+      all(.legs[]; (.id | type) == "string" and (.status | type) == "string")))' ./output/order.json > /dev/null
   test "$(stat -c '%a' ./output/order.json)" = 600
   test "$(stat -c '%a' ./output/order-summary.txt)" = 600
+  test "$(stat -c '%a' ./output/order-nested-summary.txt)" = 600
 else
   echo 'Medea: no paper orders available; skipping single-order API check'
 fi
