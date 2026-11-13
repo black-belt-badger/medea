@@ -719,10 +719,13 @@ fn crypto_trades_reversed_range_is_rejected_before_loading_credentials() {
 }
 
 #[test]
-fn account_help_lists_output_option() {
+fn account_help_lists_output_and_new_unix_flags() {
     let result = cli(&["account", "--help"]);
     assert!(result.status.success());
-    assert!(String::from_utf8_lossy(&result.stdout).contains("--out"));
+    let text = String::from_utf8_lossy(&result.stdout);
+    for expected in ["--out", "--format", "--check", "json", "text"] {
+        assert!(text.contains(expected), "missing {expected}");
+    }
 }
 
 #[test]
@@ -742,11 +745,37 @@ fn missing_output_path_is_invalid_cli() {
 }
 
 #[test]
-fn account_rejects_unpublished_query_filters_before_loading_credentials() {
+fn account_new_flags_are_accepted_before_credential_validation() {
+    for args in [
+        vec!["account", "--format", "json"],
+        vec!["account", "--format", "text", "--check"],
+        vec![
+            "account",
+            "--format",
+            "json",
+            "--check",
+            "--out",
+            "account.json",
+        ],
+    ] {
+        let result = cli(&args);
+        assert!(!result.status.success());
+        assert!(result.stdout.is_empty());
+        assert!(
+            String::from_utf8_lossy(&result.stderr)
+                .contains("Missing environment variable: APCA_API_KEY_ID")
+        );
+    }
+}
+
+#[test]
+fn account_rejects_unsupported_filters_and_invalid_format_before_credentials() {
     for args in [
         vec!["account", "--status", "ACTIVE"],
         vec!["account", "--limit", "10"],
-        vec!["account", "--format", "json"],
+        vec!["account", "--format", "yaml"],
+        vec!["account", "--format"],
+        vec!["account", "--check", "true"],
         vec!["account", "--out", "account.json", "--extra"],
     ] {
         let result = cli(&args);

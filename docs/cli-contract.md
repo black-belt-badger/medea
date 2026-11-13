@@ -14,9 +14,43 @@ particular, current `account --out` emits a path-only notice on stdout, while
 crypto data `--format json` represents complete paginated page envelopes.
 Do not silently reinterpret these as the final convention.
 
-This PR introduces only **pure diagnostics models and account findings**:
-no `--check`, `--format` or `--color` flags are added to account,
-no exit statuses change, and no network or trading behavior is touched.
+The foundational PR introduced the pure diagnostics model. The second
+account-only slice adds `--format text|json` and `--check`, with no change
+to other commands, authentication, writing/trading, global exit statuses,
+or existing account `--out` behavior.
+
+## Implemented account-only slice
+
+Both clients now accept `account --format text|json --check --out PATH`:
+
+- `account` and `account --format text` print the same original readable summary.
+- `account --format json` prints the **original validated provider JSON bytes**
+  to stdout, including unknown fields and arbitrarily precise literals; use
+  `account --format json | jq '.crypto_status'` for ordinary Unix JSON pipes.
+- `account --check` reports findings as `SEVERITY CODE (path): message`
+  on **stderr only**. `--check --format json` leaves stdout valid JSON.
+  A successful fetch with a warning or error *finding* still exits zero.
+- With `--out PATH`, both formats save the raw body with owner-only atomic
+  replacement and retain the **existing** path-only stdout success notice.
+  The path notice will move only with a separately reviewed compatibility change.
+- An intentionally closed account stdout consumer (`| head`) is treated as a
+  successful pipe close; unrelated stdout I/O failures remain errors.
+- No ANSI is emitted for account JSON or findings. `--color`, `--explain`,
+  `--diagnostics` and `--fail-on` are **not implemented** yet.
+- Invalid or unsupported account format values are rejected before
+  credentials or HTTP. No additional account query filters were introduced.
+
+Example:
+
+```sh
+kirke account --format json | jq '.crypto_status'
+medea account --format json --check > account.json
+# The second command writes raw JSON to stdout redirection, findings to stderr.
+```
+
+The same synthetic account states and private-data redaction checks are
+exercised offline in both language suites. No provider credentials or live
+HTTP calls are present in CI.
 
 ## Proposed data/format and Unix contract (for review)
 
@@ -51,8 +85,8 @@ CLI parsing and file I/O:
 | `message` | short factual string | No secrets, server response bodies or trading advice |
 | `explanation` | optional factual string | Clarifies known information and limits of inference |
 
-Proposed request: `--check` displays findings on **stderr** while stdout
-continues to carry only requested data. `--explain` adds factual explanation.
+For `account`, implemented `--check` displays findings on **stderr** while stdout
+continues to carry only requested data. Proposed `--explain` adds factual explanation.
 `--diagnostics text|json` selects only the **stderr diagnostic channel**;
 JSON diagnostics should use one versioned JSON envelope per invocation, e.g.:
 
@@ -95,7 +129,7 @@ Only validated **non-streaming** stdout broken pipes should be treated as
 intentional consumer closure; an unrelated I/O error still fails. Account
 404 and order-by-ID 404 remain distinguished by their sanitized messages.
 
-## Review decisions required before flag implementation
+## Review decisions before broader CLI rollout
 
 1. Confirm the proposed `--check`, `--diagnostics`, `--explain`,
    `--fail-on` interaction and stderr-only diagnostic transport.
@@ -110,8 +144,9 @@ intentional consumer closure; an unrelated I/O error still fails. Account
 
 1. **This paired PR:** identical contract, pure Finding/Severity types, stable
    account rules and synthetic parity tests; no observable CLI changes.
-2. **Account slice:** opt-in JSON stdout (raw), checked stderr findings, help,
-   exit/pipe/color and security integration fixtures after contract review.
+2. **Account slice (implemented):** opt-in byte-exact JSON stdout, checked
+   stderr findings, account-only broken-pipe handling and compatibility tests.
+   Global exit-code/color policy remains subject to review.
 3. **Read-only endpoints:** positions, assets, orders, order-get — use the
    shared presentation, diagnostic and output model.
 4. **Crypto data streams:** preserve page envelopes and JSONL records,

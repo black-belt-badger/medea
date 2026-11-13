@@ -1,5 +1,14 @@
-use super::present_account;
+use super::present_account as present_account_with_options;
+use crate::cli::AccountFormat;
 use std::fs;
+
+// Preserve existing acceptance scenarios while exercising the expanded boundary.
+fn present_account(response: &[u8], output: Option<&std::path::Path>) -> Result<String, String> {
+    let (payload, findings) =
+        present_account_with_options(response, output, AccountFormat::Text, false)?;
+    assert!(findings.is_empty());
+    String::from_utf8(payload).map_err(|_| "Invalid account output.".to_owned())
+}
 
 const ACCOUNT: &[u8] = br#"{
   "id": "private-account-uuid",

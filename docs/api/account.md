@@ -107,3 +107,7 @@ is omitted from the summary, but included in the explicitly requested private
 JSON export. Alternative redaction modes, terminal colors, machine stdout
 protocols, and shared diagnostics remain decisions for #44; this PR does not
 silently prescribe them.
+
+## Account CLI format and check (M3 #44 slice)
+
+`medea account --format json` emits the original validated JSON bytes to stdout; `--check` prints factual account findings to stderr. Successful reads with findings still exit zero. Default text and existing owner-only `--out PATH` behavior (including path notice) remain unchanged. A closed account stdout pipe is a successful consumer close; other IO errors remain failures. Other endpoint flags have not changed. See [CLI contract](../cli-contract.md).

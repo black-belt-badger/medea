@@ -21,15 +21,18 @@ mod output;
 mod positions;
 
 use clap::Parser;
+use std::io::{self, Write};
 use std::path::Path;
 
 use account::{decode_account, render_account_summary};
+use account_findings::account_findings;
 use assets::{decode_assets, render_assets_summary};
-use cli::{Cli, Command, CryptoCommand, OrderCommand, OrderId};
+use cli::{AccountFormat, Cli, Command, CryptoCommand, OrderCommand, OrderId};
 use client::{
     ClientError, fetch_account, fetch_assets, fetch_order, fetch_orders, fetch_positions,
 };
 use credentials::load_credentials;
+use diagnostics::Finding;
 use order_lookup::decode_order_lookup;
 use orders::{decode_orders, render_order_summary, render_orders_summary};
 use output::save_private_json;
@@ -56,7 +59,17 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::Account(options) => {
             let credentials = load_credentials().map_err(|err| err.to_string())?;
             let response = fetch_account(&credentials).map_err(|err| err.to_string())?;
-            print!("{}", present_account(&response, options.output.as_deref())?);
+            let (payload, findings) = present_account(
+                &response,
+                options.output.as_deref(),
+                options.format,
+                options.check,
+            )?;
+            if write_account_stdout(&payload)? {
+                for finding in &findings {
+                    eprintln!("{}", render_account_finding(finding));
+                }
+            }
             Ok(())
         }
         Command::Positions(options) => {
@@ -102,22 +115,58 @@ fn run(cli: Cli) -> Result<(), String> {
     }
 }
 
-// Keep account presentation testable without credentials or network access.
-// Invalid provider data must never reach either stdout or a private export.
-fn present_account(response: &[u8], output: Option<&Path>) -> Result<String, String> {
+// One credential-free acceptance boundary. JSON is byte-exact provider data;
+// diagnostics never contaminate stdout, and file mode preserves legacy notices.
+fn present_account(
+    response: &[u8],
+    output: Option<&Path>,
+    format: AccountFormat,
+    check: bool,
+) -> Result<(Vec<u8>, Vec<Finding>), String> {
     let account =
         decode_account(response).map_err(|_| "Invalid Alpaca account response.".to_owned())?;
-    match output {
-        None => Ok(render_account_summary(&account)),
+    let findings = if check {
+        account_findings(&account)
+    } else {
+        Vec::new()
+    };
+    let payload = match output {
+        None => match format {
+            AccountFormat::Text => render_account_summary(&account).into_bytes(),
+            AccountFormat::Json => response.to_vec(),
+        },
         Some(path) => {
             save_private_json(path, response)
                 .map_err(|err| format!("Could not save account JSON: {err}"))?;
-            Ok(format!(
-                "Saved complete account JSON to {}\n",
-                path.display()
-            ))
+            format!("Saved complete account JSON to {}\n", path.display()).into_bytes()
         }
+    };
+    Ok((payload, findings))
+}
+
+// Treat an intentionally closed consumer pipe as success, but not unrelated IO.
+fn write_account_stdout(payload: &[u8]) -> Result<bool, String> {
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+    write_account_bytes(&mut output, payload)
+}
+
+fn write_account_bytes<W: Write>(output: &mut W, payload: &[u8]) -> Result<bool, String> {
+    match output.write_all(payload).and_then(|_| output.flush()) {
+        Ok(()) => Ok(true),
+        Err(err) if err.kind() == io::ErrorKind::BrokenPipe => Ok(false),
+        Err(_) => Err("Could not write account output.".to_owned()),
     }
+}
+
+fn render_account_finding(finding: &Finding) -> String {
+    format!(
+        "{} {} ({}): {}",
+        finding.severity.as_str().to_uppercase(),
+        finding.code,
+        finding.path,
+        finding.message
+    )
 }
 
 // Keep assets presentation testable with offline, synthetic provider responses.
@@ -141,6 +190,10 @@ fn present_assets(response: &[u8], output: Option<&Path>) -> Result<String, Stri
 #[cfg(test)]
 #[path = "account_acceptance_tests.rs"]
 mod account_acceptance_tests;
+
+#[cfg(test)]
+#[path = "account_unix_tests.rs"]
+mod account_unix_tests;
 
 // One testable boundary for sensitive portfolio output and validation.
 // A malformed upstream payload must never appear on stdout or replace a file.
