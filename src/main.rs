@@ -9,6 +9,7 @@ mod credentials;
 mod crypto_bars;
 mod crypto_trades;
 mod order_filters;
+mod order_lookup;
 mod order_types;
 mod orders;
 mod output;
@@ -21,7 +22,8 @@ use assets::{decode_assets, render_assets_summary};
 use cli::{Cli, Command, CryptoCommand, OrderCommand};
 use client::{fetch_account, fetch_assets, fetch_order, fetch_orders, fetch_positions};
 use credentials::load_credentials;
-use orders::{decode_order, decode_orders, render_order_summary, render_orders_summary};
+use order_lookup::decode_order_lookup;
+use orders::{decode_orders, render_order_summary, render_orders_summary};
 use output::save_private_json;
 use positions::{decode_positions, render_positions_summary};
 
@@ -76,10 +78,10 @@ fn run(cli: Cli) -> Result<(), String> {
             command: OrderCommand::Get(options),
         } => {
             let credentials = load_credentials().map_err(|err| err.to_string())?;
-            let response = fetch_order(&credentials, &options).map_err(|err| err.to_string())?;
-            // Decode the single JSON object before displaying or exporting it.
-            let order =
-                decode_order(&response).map_err(|_| "Invalid Alpaca order response.".to_owned())?;
+            // Decode and verify that the returned primary order ID matches the
+            // requested UUID before displaying or exporting *any* bytes.
+            let (order, response) =
+                decode_order_lookup(&options.order_id, fetch_order(&credentials, &options))?;
             match options.output {
                 None => print!("{}", render_order_summary(&order)),
                 Some(path) => {

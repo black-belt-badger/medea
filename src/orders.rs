@@ -31,7 +31,7 @@ pub struct OrderDetails {
     group_role: Option<String>,
     source: Option<String>,
     subtag: Option<String>,
-    ratio_qty: Option<String>,
+    pub(crate) ratio_qty: Option<String>,
 }
 
 /// One paper order, including nullable options/multi-leg attributes.
@@ -45,17 +45,17 @@ pub struct OrderDetails {
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Order {
     #[serde(deserialize_with = "nonblank_order_id")]
-    id: String,
+    pub(crate) id: String,
     client_order_id: Option<String>,
     symbol: Option<String>,
     asset_class: Option<String>,
-    side: Option<OrderSide>,
+    pub(crate) side: Option<OrderSide>,
     #[serde(rename = "type")]
     order_type: Option<OrderType>,
-    status: OrderState,
-    qty: Option<String>,
-    notional: Option<String>,
-    filled_qty: Option<String>,
+    pub(crate) status: OrderState,
+    pub(crate) qty: Option<String>,
+    pub(crate) notional: Option<String>,
+    pub(crate) filled_qty: Option<String>,
     filled_avg_price: Option<String>,
     limit_price: Option<String>,
     stop_price: Option<String>,
@@ -63,8 +63,8 @@ pub struct Order {
     submitted_at: Option<String>,
     filled_at: Option<String>,
     #[serde(flatten)]
-    details: OrderDetails,
-    legs: Option<Vec<Order>>,
+    pub(crate) details: OrderDetails,
+    pub(crate) legs: Option<Vec<Order>>,
 }
 
 fn nonblank_order_id<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
