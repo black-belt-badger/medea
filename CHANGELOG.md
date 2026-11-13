@@ -7,6 +7,7 @@ Versions use [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Added
+- `medea order cancel ORDER_ID` adds an offline-by-default paper cancellation preview. Explicit `--confirm` is required by both CLI and request builder for one authenticated DELETE; HTTP 204 acknowledges acceptance but never proves terminal cancellation. Distinct 404/422 and other errors, offline tests and no live DELETE in integration scripts.
 - `medea crypto quotes`: historical bid/ask crypto quotes with exact prices/sizes, nanosecond timestamps, typed location/symbol/date controls, 1–20-page bounded pagination and resumable tokens.
 - Streaming JSON/JSONL output, complete provider page envelopes, atomic owner-only exports, rollback on later-page failures, and deterministic offline CLI and API tests.
 

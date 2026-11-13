@@ -6,7 +6,7 @@ use reqwest::blocking::{Client, Request};
 use reqwest::header::HeaderValue;
 use reqwest::redirect::Policy;
 
-use crate::cli::{AssetsArgs, OrderGetArgs, OrdersArgs};
+use crate::cli::{AssetsArgs, OrderCancelArgs, OrderGetArgs, OrdersArgs};
 use crate::credentials::Credentials;
 use crate::crypto_bars::{BarsInstant, BarsSort, CryptoBarsArgs, CryptoLocation, CryptoSymbols};
 use crate::crypto_quotes::CryptoQuotesArgs;
@@ -22,6 +22,8 @@ const CRYPTO_DATA_ROOT: &str = "https://data.alpaca.markets/v1beta3/crypto/";
 pub enum ClientError {
     InvalidCredentials,
     ConnectionFailed,
+    ConfirmationRequired,
+    OrderNotCancelable,
     UnexpectedStatus(u16),
     OrderNotFound,
 }
@@ -33,6 +35,13 @@ impl fmt::Display for ClientError {
             Self::ConnectionFailed => write!(
                 f,
                 "Could not connect to Alpaca's paper API. Check your network connection."
+            ),
+            Self::ConfirmationRequired => {
+                write!(f, "Paper order cancellation requires explicit --confirm.")
+            }
+            Self::OrderNotCancelable => write!(
+                f,
+                "Alpaca rejected cancellation: order is not cancelable (HTTP 422)."
             ),
             Self::OrderNotFound => write!(f, "Alpaca paper order not found (HTTP 404)."),
             Self::UnexpectedStatus(401) => {
@@ -289,6 +298,37 @@ fn order_request(
     Ok(request)
 }
 
+// The safe builder rejects an unconfirmed DELETE even if a caller bypasses
+// the CLI or the run_cancel dry-run boundary.
+fn cancel_order_request(
+    client: &Client,
+    credentials: &Credentials,
+    options: &OrderCancelArgs,
+) -> Result<Request, ClientError> {
+    if !options.confirmed {
+        return Err(ClientError::ConfirmationRequired);
+    }
+    let mut request = authenticated_request(client, credentials, PAPER_ORDERS_URL)?;
+    request
+        .url_mut()
+        .path_segments_mut()
+        .map_err(|_| ClientError::ConnectionFailed)?
+        .push(options.order_id.as_str());
+    *request.method_mut() = reqwest::Method::DELETE;
+    Ok(request)
+}
+
+/// HTTP 204 acknowledges Alpaca accepted a cancellation request; the order
+/// may still fill and should be inspected separately with order get.
+fn interpret_cancel_status(status: StatusCode) -> Result<(), ClientError> {
+    match status.as_u16() {
+        204 => Ok(()),
+        404 => Err(ClientError::OrderNotFound),
+        422 => Err(ClientError::OrderNotCancelable),
+        other => Err(ClientError::UnexpectedStatus(other)),
+    }
+}
+
 // One authenticated request builder, with identical safeguards for all paper endpoints.
 fn authenticated_request(
     client: &Client,
@@ -380,6 +420,24 @@ pub fn fetch_order(
     .map_err(order_error)
 }
 
+/// Sends at most one DELETE; no automatic application-level retry.
+/// Never reports cancellation as completed based on a 204 response.
+pub fn fetch_cancel_order(
+    credentials: &Credentials,
+    options: &OrderCancelArgs,
+) -> Result<(), ClientError> {
+    if !options.confirmed {
+        return Err(ClientError::ConfirmationRequired);
+    }
+    let client = authenticated_client()?;
+    let request = cancel_order_request(&client, credentials, options)?;
+    let response = client
+        .execute(request)
+        .map_err(|_| ClientError::ConnectionFailed)?;
+    // No need to parse or emit provider bodies, including error bodies.
+    interpret_cancel_status(response.status())
+}
+
 fn fetch_authenticated(
     credentials: &Credentials,
     build_request: impl FnOnce(&Client, &Credentials) -> Result<Request, ClientError>,
@@ -403,6 +461,10 @@ fn check_status(status: StatusCode) -> Result<(), ClientError> {
         Err(ClientError::UnexpectedStatus(status.as_u16()))
     }
 }
+
+#[cfg(test)]
+#[path = "client_cancel_tests.rs"]
+mod cancel_tests;
 
 #[cfg(test)]
 mod tests {

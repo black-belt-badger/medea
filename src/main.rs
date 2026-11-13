@@ -9,6 +9,7 @@ mod credentials;
 mod crypto_bars;
 mod crypto_quotes;
 mod crypto_trades;
+mod order_cancel;
 mod order_filters;
 mod order_lookup;
 mod order_types;
@@ -78,6 +79,9 @@ fn run(cli: Cli) -> Result<(), String> {
             }
             Ok(())
         }
+        Command::Order {
+            command: OrderCommand::Cancel(options),
+        } => order_cancel::run_cancel(options),
         Command::Order {
             command: OrderCommand::Get(options),
         } => {

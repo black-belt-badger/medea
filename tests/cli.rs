@@ -717,3 +717,76 @@ fn missing_output_path_is_invalid_cli() {
     assert!(!result.status.success());
     assert!(String::from_utf8_lossy(&result.stderr).contains("--out"));
 }
+
+// Offline-only cancellation integration: the helper explicitly removes
+// both Alpaca credential variables, so no test can place a DELETE.
+#[test]
+fn cancel_help_shows_dry_run_default_and_explicit_confirm() {
+    let parent = cli(&["order", "--help"]);
+    assert!(parent.status.success());
+    assert!(String::from_utf8_lossy(&parent.stdout).contains("cancel"));
+
+    let output = cli(&["order", "cancel", "--help"]);
+    assert!(output.status.success());
+    let help = String::from_utf8_lossy(&output.stdout);
+    assert!(help.contains("ORDER_ID"));
+    assert!(help.contains("--confirm"));
+    assert!(!help.contains("--all"));
+    assert!(!help.contains("--out"));
+}
+
+#[test]
+fn cancel_dry_run_succeeds_without_credentials_and_never_sends_a_request() {
+    let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+    let output = cli(&["order", "cancel", uuid]);
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let preview = String::from_utf8_lossy(&output.stdout);
+    assert!(preview.starts_with("DRY RUN"));
+    assert!(preview.contains("no cancellation was sent"));
+    assert!(preview.contains("--confirm"));
+    assert!(preview.contains(uuid));
+    assert!(!preview.contains("HTTP 204"));
+}
+
+#[test]
+fn cancel_confirmation_without_credentials_does_not_send_a_request() {
+    let output = cli(&[
+        "order",
+        "cancel",
+        "9275f66a-0a1b-4a22-8c55-167416c7cf14",
+        "--confirm",
+    ]);
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("Missing environment variable: APCA_API_KEY_ID")
+    );
+}
+
+#[test]
+fn cancel_rejects_missing_unsafe_and_unsupported_args_before_credentials() {
+    let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+    for args in [
+        vec!["order", "cancel"],
+        vec!["order", "cancel", "not-a-uuid"],
+        vec!["order", "cancel", "../positions"],
+        vec![
+            "order",
+            "cancel",
+            "9275f66a-0a1b-4a22-8c55-167416c7cf14?nested=true",
+        ],
+        vec!["order", "cancel", uuid, "--out", "file"],
+        vec!["order", "cancel", uuid, "--all"],
+        vec!["order", "cancel", uuid, "--dry-run"],
+    ] {
+        let output = cli(&args);
+        assert!(!output.status.success(), "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("Missing environment variable"),
+            "{args:?}"
+        );
+    }
+}

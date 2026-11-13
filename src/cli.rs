@@ -396,6 +396,18 @@ fn parse_order_limit(value: &str) -> Result<u16, String> {
 pub enum OrderCommand {
     /// Fetch a single order by its Alpaca server-issued UUID.
     Get(OrderGetArgs),
+    /// Preview cancellation of one paper order; --confirm is required for DELETE.
+    Cancel(OrderCancelArgs),
+}
+
+#[derive(Debug, Args, PartialEq, Eq)]
+pub struct OrderCancelArgs {
+    /// Canonical server-issued order UUID (not client_order_id).
+    #[arg(value_name = "ORDER_ID")]
+    pub order_id: OrderId,
+    /// Send one actual DELETE to Alpaca's PAPER API; default is offline dry run.
+    #[arg(long = "confirm")]
+    pub confirmed: bool,
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]
@@ -447,8 +459,8 @@ impl FromStr for OrderId {
 mod tests {
     use super::{
         AssetAttribute, AssetAttributes, AssetClass, AssetExchange, AssetExchanges, AssetStatus,
-        AssetsArgs, Cli, Command, CryptoCommand, OrderCommand, OrderDirection, OrderGetArgs,
-        OrderId, OrderStatus, OrderSymbols, OrdersArgs, OutputArgs,
+        AssetsArgs, Cli, Command, CryptoCommand, OrderCancelArgs, OrderCommand, OrderDirection,
+        OrderGetArgs, OrderId, OrderStatus, OrderSymbols, OrdersArgs, OutputArgs,
     };
     use crate::crypto_bars::{BarsFormat, BarsSort, CryptoLocation};
     use crate::order_filters::{OrderAssetClass, OrderAssetClasses, OrderSideFilter};
@@ -1518,6 +1530,51 @@ mod tests {
                 }),
             }
         );
+    }
+
+    #[test]
+    fn parses_order_cancel_dry_run_by_default_and_confirm_only_when_explicit() {
+        let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+        for (args, confirmed) in [
+            (vec!["medea", "order", "cancel", uuid], false),
+            (vec!["medea", "order", "cancel", uuid, "--confirm"], true),
+            (vec!["medea", "order", "cancel", "--confirm", uuid], true),
+        ] {
+            let parsed = Cli::try_parse_from(args).unwrap();
+            assert_eq!(
+                parsed.command,
+                Command::Order {
+                    command: OrderCommand::Cancel(OrderCancelArgs {
+                        order_id: uuid.parse().unwrap(),
+                        confirmed,
+                    })
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_missing_or_hostile_cancel_uuid_and_unrelated_flags_before_io() {
+        let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+        for args in [
+            vec!["medea", "order", "cancel"],
+            vec!["medea", "order", "cancel", ""],
+            vec!["medea", "order", "cancel", "not-a-uuid"],
+            vec!["medea", "order", "cancel", "../positions"],
+            vec![
+                "medea",
+                "order",
+                "cancel",
+                "9275f66a-0a1b-4a22-8c55-167416c7cf14?all=true",
+            ],
+            vec!["medea", "order", "cancel", uuid, "--out", "output.json"],
+            vec!["medea", "order", "cancel", uuid, "--all"],
+            vec!["medea", "order", "cancel", uuid, "--nested"],
+            vec!["medea", "order", "cancel", uuid, "--dry-run"],
+            vec!["medea", "order", "cancel", uuid, "--confirmed"],
+        ] {
+            assert!(Cli::try_parse_from(args.clone()).is_err(), "{args:?}");
+        }
     }
 
     #[test]
