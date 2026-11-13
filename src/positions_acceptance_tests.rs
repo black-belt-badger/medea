@@ -1,9 +1,17 @@
-use super::present_positions;
+use super::present_positions as present_positions_with_options;
+use crate::cli::ReadFormat;
 use std::fs;
+
+fn present_positions(response: &[u8], output: Option<&std::path::Path>) -> Result<String, String> {
+    let (payload, findings) =
+        present_positions_with_options(response, output, ReadFormat::Text, false)?;
+    assert!(findings.is_empty());
+    String::from_utf8(payload).map_err(|_| "Invalid positions output.".to_owned())
+}
 
 // Same synthetic portfolio and exact decimal spellings as Kirke's acceptance
 // checks. Both preserve the original provider JSON without reserialization.
-const POSITIONS: &[u8] = br#"[{"asset_class":"crypto","asset_id":"private-position-id","asset_marginable":false,"avg_entry_price":"67123.0000000000000000000001","change_today":"0","cost_basis":"68.00123456789012345678","current_price":"67291.12","exchange":"CRYPTO","lastday_price":"66500.50","market_value":"67.123456789012345","qty":"0.000997498123456789012345","side":"long","symbol":"BTCUSD","unrealized_intraday_pl":"0","unrealized_intraday_plpc":"0","unrealized_pl":"-0.000000000001","unrealized_plpc":"-0.0000000000123456789","qty_available":null,"future_provider_property":{"decimal":"1.00000000000000000000001"}}]"#;
+pub(super) const POSITIONS: &[u8] = br#"[{"asset_class":"crypto","asset_id":"private-position-id","asset_marginable":false,"avg_entry_price":"67123.0000000000000000000001","change_today":"0","cost_basis":"68.00123456789012345678","current_price":"67291.12","exchange":"CRYPTO","lastday_price":"66500.50","market_value":"67.123456789012345","qty":"0.000997498123456789012345","side":"long","symbol":"BTCUSD","unrealized_intraday_pl":"0","unrealized_intraday_plpc":"0","unrealized_pl":"-0.000000000001","unrealized_plpc":"-0.0000000000123456789","qty_available":null,"future_provider_property":{"decimal":"1.00000000000000000000001"}}]"#;
 
 #[test]
 fn positions_summary_keeps_all_decimal_digits_and_omits_private_ids() {

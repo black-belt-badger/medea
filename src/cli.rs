@@ -24,7 +24,7 @@ pub enum Command {
     /// Fetch Alpaca account information.
     Account(AccountArgs),
     /// List all open positions in the Alpaca paper account.
-    Positions(OutputArgs),
+    Positions(PositionsArgs),
     /// List available Alpaca paper assets (crypto by default).
     Assets(AssetsArgs),
     /// List and filter Alpaca paper orders (read-only).
@@ -53,7 +53,7 @@ pub enum CryptoCommand {
 
 /// Account-only output flags; other endpoints migrate after review.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum AccountFormat {
+pub enum ReadFormat {
     Text,
     Json,
 }
@@ -64,18 +64,24 @@ pub struct AccountArgs {
     #[arg(long = "out", value_name = "PATH")]
     pub output: Option<PathBuf>,
     /// Human summary (default) or raw provider JSON on stdout.
-    #[arg(long = "format", value_enum, default_value_t = AccountFormat::Text)]
-    pub format: AccountFormat,
+    #[arg(long = "format", value_enum, default_value_t = ReadFormat::Text)]
+    pub format: ReadFormat,
     /// Print factual account findings to stderr without changing exit status.
     #[arg(long = "check")]
     pub check: bool,
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]
-pub struct OutputArgs {
-    /// Write the complete JSON response to PATH.
+pub struct PositionsArgs {
+    /// Write the original provider JSON privately to PATH (legacy notice retained).
     #[arg(long = "out", value_name = "PATH")]
     pub output: Option<PathBuf>,
+    /// Human summary (default) or exact raw provider JSON on stdout.
+    #[arg(long = "format", value_enum, default_value_t = ReadFormat::Text)]
+    pub format: ReadFormat,
+    /// Print factual positions findings to stderr without changing exit status.
+    #[arg(long = "check")]
+    pub check: bool,
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]
@@ -481,10 +487,10 @@ impl FromStr for OrderId {
 #[cfg(test)]
 mod tests {
     use super::{
-        AccountArgs, AccountFormat, AssetAttribute, AssetAttributes, AssetClass, AssetExchange,
-        AssetExchanges, AssetStatus, AssetsArgs, Cli, Command, CryptoCommand, OrderCancelArgs,
-        OrderCommand, OrderDirection, OrderGetArgs, OrderId, OrderStatus, OrderSymbols, OrdersArgs,
-        OutputArgs,
+        AccountArgs, AssetAttribute, AssetAttributes, AssetClass, AssetExchange, AssetExchanges,
+        AssetStatus, AssetsArgs, Cli, Command, CryptoCommand, OrderCancelArgs, OrderCommand,
+        OrderDirection, OrderGetArgs, OrderId, OrderStatus, OrderSymbols, OrdersArgs,
+        PositionsArgs, ReadFormat,
     };
     use crate::crypto_bars::{BarsFormat, BarsSort, CryptoLocation};
     use crate::order_filters::{OrderAssetClass, OrderAssetClasses, OrderSideFilter};
@@ -885,7 +891,7 @@ mod tests {
             cli.command,
             Command::Account(AccountArgs {
                 output: None,
-                format: AccountFormat::Text,
+                format: ReadFormat::Text,
                 check: false,
             })
         );
@@ -898,7 +904,7 @@ mod tests {
             cli.command,
             Command::Account(AccountArgs {
                 output: Some("account.json".into()),
-                format: AccountFormat::Text,
+                format: ReadFormat::Text,
                 check: false,
             })
         );
@@ -920,7 +926,7 @@ mod tests {
             cli.command,
             Command::Account(AccountArgs {
                 output: Some("account.json".into()),
-                format: AccountFormat::Json,
+                format: ReadFormat::Json,
                 check: true,
             })
         );
@@ -941,7 +947,14 @@ mod tests {
     #[test]
     fn parses_positions() {
         let cli = Cli::try_parse_from(["medea", "positions"]).unwrap();
-        assert_eq!(cli.command, Command::Positions(OutputArgs { output: None }));
+        assert_eq!(
+            cli.command,
+            Command::Positions(PositionsArgs {
+                output: None,
+                format: ReadFormat::Text,
+                check: false
+            })
+        );
     }
 
     #[test]
@@ -949,10 +962,46 @@ mod tests {
         let cli = Cli::try_parse_from(["medea", "positions", "--out", "positions.json"]).unwrap();
         assert_eq!(
             cli.command,
-            Command::Positions(OutputArgs {
-                output: Some("positions.json".into())
+            Command::Positions(PositionsArgs {
+                output: Some("positions.json".into()),
+                format: ReadFormat::Text,
+                check: false,
             })
         );
+    }
+
+    #[test]
+    fn positions_json_and_check_can_be_selected_independently() {
+        let cli = Cli::try_parse_from(["medea", "positions", "--format", "json"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Positions(PositionsArgs {
+                output: None,
+                format: ReadFormat::Json,
+                check: false,
+            })
+        );
+        let cli = Cli::try_parse_from(["medea", "positions", "--check", "--out", "positions.json"])
+            .unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Positions(PositionsArgs {
+                output: Some("positions.json".into()),
+                format: ReadFormat::Text,
+                check: true,
+            })
+        );
+    }
+
+    #[test]
+    fn positions_rejects_unsupported_format_and_unexpected_flag_values() {
+        for args in [
+            vec!["medea", "positions", "--format", "jsonl"],
+            vec!["medea", "positions", "--format"],
+            vec!["medea", "positions", "--check", "true"],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
     }
 
     #[test]

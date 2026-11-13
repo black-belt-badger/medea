@@ -14,10 +14,10 @@ particular, current `account --out` emits a path-only notice on stdout, while
 crypto data `--format json` represents complete paginated page envelopes.
 Do not silently reinterpret these as the final convention.
 
-The foundational PR introduced the pure diagnostics model. The second
-account-only slice adds `--format text|json` and `--check`, with no change
-to other commands, authentication, writing/trading, global exit statuses,
-or existing account `--out` behavior.
+The foundational PR introduced the pure diagnostics model. Account and
+positions now have compatible `--format text|json` and `--check` options,
+without altering other commands, trading actions, global exit statuses,
+or the existing `--out` success notices.
 
 ## Implemented account-only slice
 
@@ -51,6 +51,45 @@ medea account --format json --check > account.json
 The same synthetic account states and private-data redaction checks are
 exercised offline in both language suites. No provider credentials or live
 HTTP calls are present in CI.
+
+
+## Implemented positions slice
+
+The `positions` command has the same incremental Unix interface as `account`
+in Kirke and Medea:
+
+- `positions` or `positions --format text`: unchanged readable summary;
+  `[]` still prints `No open positions.`
+- `positions --format json`: byte-for-byte original **validated** JSON
+  array on stdout, including long decimal strings, nulls and future properties;
+  `positions --format json | jq '.[0].symbol'` works as a normal pipe.
+- `positions --check`: independently emits pure, non-sensitive factual
+  findings to stderr. A successful fetch with findings still exits 0.
+  No new ANSI/color flags or diagnostic JSON/envelopes are added.
+- `POSITIONS_EMPTY` (info, path `positions`): Alpaca returned an empty
+  open-position snapshot, not evidence that there were never positions.
+- `POSITION_SIDE_UNKNOWN` (warning, path `positions[].side`):
+  at least one position contains an unfamiliar future side string. The raw
+  provider response retains it but stderr never echoes its value.
+  Normal known long/short positions produce no findings.
+- `--out PATH` retains byte-exact atomic owner-only JSON, including its
+  existing path-only stdout success notice; the optional `--check` findings
+  still go only to stderr.
+- Broken stdout pipes are benign for the account and positions commands;
+  unrelated stdout errors remain failures. Existing positions API error
+  handling and unsupported-filter rejection remain unchanged.
+
+Example:
+
+```sh
+kirke positions --format json | jq '.[0].symbol'
+medea positions --format json --check > positions.json
+```
+
+This implementation uses the same synthetic BTCUSD exact-decimal fixture and
+matched empty/unknown-side states in both suites. No real provider credentials
+or account data are included in offline tests. Other endpoints, global output
+styles, exit-code policy and paper-order commands are still deferred.
 
 ## Proposed data/format and Unix contract (for review)
 
@@ -147,11 +186,13 @@ intentional consumer closure; an unrelated I/O error still fails. Account
 2. **Account slice (implemented):** opt-in byte-exact JSON stdout, checked
    stderr findings, account-only broken-pipe handling and compatibility tests.
    Global exit-code/color policy remains subject to review.
-3. **Read-only endpoints:** positions, assets, orders, order-get — use the
+3. **Positions slice (implemented):** raw JSON stdout, shared pipe and
+   diagnostics formatting, and conservative empty/unknown-side findings.
+4. **Remaining read-only endpoints:** assets, orders, order-get — adopt the
    shared presentation, diagnostic and output model.
-4. **Crypto data streams:** preserve page envelopes and JSONL records,
+5. **Crypto data streams:** preserve page envelopes and JSONL records,
    introduce safe broken-pipe behavior and bounded page rollback tests.
-5. **Paper write commands:** maintain explicit confirmation and no unsafe
+6. **Paper write commands:** maintain explicit confirmation and no unsafe
    automatic submission; audit all diagnostics and stdout paths.
 
 The paired fixtures cover ACTIVE + trading_blocked=true, absent
