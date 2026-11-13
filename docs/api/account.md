@@ -1,46 +1,76 @@
-# M3 — account endpoint coverage and parity
+# GET /v2/account — M3 response coverage
 
-Scope: [Medea #33](https://github.com/black-belt-badger/medea/issues/33) paired with [Kirke #32](https://github.com/black-belt-badger/kirke/issues/32), the first, narrow account-status enum improvement. The full M3 response audit remains open.
+Scope: [Medea #33](https://github.com/black-belt-badger/medea/issues/33), paired with [Kirke #32](https://github.com/black-belt-badger/kirke/issues/32) and [Kirke PR #46](https://github.com/black-belt-badger/kirke/pull/46).
 
-API reference: [Alpaca GET /v2/account](https://docs.alpaca.markets/us/reference/getaccount-1).
+Sources verified 2026-11-13: [Alpaca GET /v2/account](https://docs.alpaca.markets/us/reference/getaccount-1) and the [machine-readable OpenAPI schema](https://docs.alpaca.markets/us/reference/getaccount-1.md).
 
-## Request coverage
+**Coverage: all 34 fields in the published Account schema.** This phase completes typed response-property coverage, following M3's status-enum phase. Shared terminal color, diagnostics and Unix output behavior are a separate, later M3 decision.
 
-| Alpaca contract | Medea implementation | Current state |
-| --- | --- | --- |
-| GET `/v2/account`, no path/query/body arguments | Fixed `GET` request without parameters or body | Covered, regression-tested |
-| Trading host and credentials | HTTPS `paper-api.alpaca.markets`, paper-only credentials from `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY` | Covered |
-| One account object on HTTP success | Typed decoder and concise human summary | Covered for currently displayed fields |
-| Non-2xx or connection failures | Sanitized status and transport errors; no provider response bodies | Covered, remaining negative cases later in M3 |
-| Original, complete provider data | `account --out PATH` writes original JSON bytes atomically with owner-only permissions | Covered |
-| CLI options | No REST parameters; optional `--out PATH` controls local export only | Covered |
+## Request contract
 
-## Response coverage
+| Alpaca contract | Medea implementation |
+| --- | --- |
+| `GET https://paper-api.alpaca.markets/v2/account` | Fixed authenticated HTTPS paper-only GET; no live trading |
+| Query/path/body parameters | **None**; never invent REST filters |
+| Success response | One JSON account object; typed decoding for all known fields |
+| Non-2xx and transport errors | Sanitized status/error messages; no provider response body or secrets |
+| File output | `medea account --out PATH` writes the **original complete JSON bytes**, owner-only, atomically |
 
-| Field group | Current representation | M3 follow-up |
-| --- | --- | --- |
-| `status` | Required, typed `AccountStatus` enum | Done |
-| `crypto_status` | Optional, same `AccountStatus` enum; missing or explicit null = `None` | Done |
-| `id`, `account_number`, `currency` | Required strings | Reassess schema nullability |
-| `cash`, `equity`, `buying_power` | Required **exact JSON decimal strings**, never floats | Keep exact |
-| `trading_blocked` | Required boolean | Done for summary |
-| Margin, buying-power variations, option levels, previous balances, trading/suspension flags, timestamps, deprecated fields | Available in the original `--out` JSON; not all typed yet | **Full schema audit is future M3 work** |
-| Newly added properties | Raw output preserves them unchanged | Done for export |
+## Response-property coverage
 
-### Account-status vocabulary
+The current OpenAPI `required` list is only **`id` and `status`**. Notably, `account_number` is nullable. Other documented response fields may be missing (and the implementation tolerates explicit null for optional fields). Missing and null both become `None` in the typed model; **the untouched raw JSON export** retains the original distinction. Present `false` and the monetary string `"0"` remain distinct from `None`.
 
-The two response fields share these known Alpaca statuses:
+| Property | Rust type | Requirement | Model |
+| --- | --- | --- | --- |
+| `account_blocked` | `Option<bool>` | Optional | `AccountDetails` |
+| `account_number` | `Option<String> (nullable)` | Optional | `Account` |
+| `accrued_fees` | `Option<String>` | Optional | `AccountDetails` |
+| `balance_asof` | `Option<String>` | Optional | `AccountDetails` |
+| `buying_power` | `Option<String>` | Optional | `Account` |
+| `cash` | `Option<String>` | Optional | `Account` |
+| `created_at` | `Option<String>` | Optional | `AccountDetails` |
+| `crypto_status` | `Option<AccountStatus>` | Optional | `Account` |
+| `currency` | `Option<String>` | Optional | `Account` |
+| `equity` | `Option<String>` | Optional | `Account` |
+| `id` | `String` | Required | `Account` |
+| `initial_margin` | `Option<String>` | Optional | `AccountDetails` |
+| `intraday_adjustments` | `Option<String>` | Optional | `AccountDetails` |
+| `last_equity` | `Option<String>` | Optional | `AccountDetails` |
+| `last_maintenance_margin` | `Option<String>` | Optional | `AccountDetails` |
+| `long_market_value` | `Option<String>` | Optional | `AccountDetails` |
+| `maintenance_margin` | `Option<String>` | Optional | `AccountDetails` |
+| `multiplier` | `Option<String>` | Optional | `AccountDetails` |
+| `non_marginable_buying_power` | `Option<String>` | Optional | `AccountDetails` |
+| `options_approved_level` | `Option<OptionsLevel>` | Optional | `AccountDetails` |
+| `options_buying_power` | `Option<String>` | Optional | `AccountDetails` |
+| `options_trading_level` | `Option<OptionsLevel>` | Optional | `AccountDetails` |
+| `pending_reg_taf_fees` | `Option<String>` | Optional | `AccountDetails` |
+| `pending_transfer_in` | `Option<String>` | Optional | `AccountDetails` |
+| `pending_transfer_out` | `Option<String>` | Optional | `AccountDetails` |
+| `portfolio_value` | `Option<String>` | Optional | `AccountDetails` |
+| `regt_buying_power` | `Option<String>` | Optional | `AccountDetails` |
+| `short_market_value` | `Option<String>` | Optional | `AccountDetails` |
+| `shorting_enabled` | `Option<bool>` | Optional | `AccountDetails` |
+| `sma` | `Option<String>` | Optional | `AccountDetails` |
+| `status` | `AccountStatus` | Required | `Account` |
+| `trade_suspended_by_user` | `Option<bool>` | Optional | `AccountDetails` |
+| `trading_blocked` | `Option<bool>` | Optional | `Account` |
+| `transfers_blocked` | `Option<bool>` | Optional | `AccountDetails` |
 
-`INACTIVE`, `PAPER_ONLY`, `ONBOARDING`, `SUBMITTED`, `SUBMISSION_FAILED`, `ACTION_REQUIRED`, `ACCOUNT_UPDATED`, `APPROVAL_PENDING`, `APPROVED`, `REJECTED`, `ACTIVE`, `ACCOUNT_CLOSED`, `ACCOUNT_CLOSED_PENDING`, `LIMITED`.
+## Validation and forward compatibility
 
-Each known value has a named Rust `AccountStatus` variant. The `Other(String)` fallback preserves **unrecognized future status strings**, with exact `Display` and JSON serialization. Wrong JSON types fail decoding. Required `status` cannot be missing/null; optional `crypto_status` can.
+- `status` and optional `crypto_status` share `AccountStatus`: all 14 documented values are named variants, and `Other(String)` retains any future status spelling.
+- `options_approved_level` and `options_trading_level` are integer enums: `0` disabled, `1` covered call/cash-secured put, `2` long call/put, `3` spreads/straddles. `OptionsLevel::Other(i64)` preserves unrecognized integer levels. JSON fractions, quoted strings and booleans are rejected.
+- Monetary/buying-power/margin values remain exact **JSON strings**, held as `String`; no floating-point conversion or reformatting. `balance_asof` and `created_at` retain their original text, including fractional-second precision.
+- Unknown upstream properties (for example `effective_buying_power`, `position_market_value`, and configuration objects found in example responses) do not break typed decoding and remain present in the complete raw JSON export.
+- Older/deprecated properties omitted by Alpaca are never required.
 
-The default summary still displays plain wire values (e.g. `Status: ACTIVE`, `Crypto status: PAPER_ONLY`); `--out` remains the unmodified provider response. This is intentionally equivalent to Kirke; internals remain Rust-idiomatic.
+## CLI behavior and tests
 
-### Intentionally deferred
+The visible account summary is intentionally unchanged for fully populated responses. When a field is missing or null, the summary prints **`not provided`**, not a guessed zero or `false`. It continues to omit the account UUID.
 
-- All documented account properties mapped to typed fields, their nullability, and historical/deprecated schema variants.
-- Business-state diagnostics and explanations; color/TTY behavior; JSON stdout and Unix pipe conventions. Those are tracked as **cross-cutting M3 work**: [Medea #44](https://github.com/black-belt-badger/medea/issues/44) and [Kirke #44](https://github.com/black-belt-badger/kirke/issues/44).
-- New request flags, trading writes, and assumptions that `ACTIVE` means unrestricted crypto trading.
+Offline tests cover full-schema fixtures; all 34 property types; missing/null/present-zero/present-false; exact long-decimal values; option enum known and future cases; invalid JSON types; unknown extra fields; and the existing status, request and private-file behavior. Live paper-account integration is opt-in and never belongs in public CI.
 
-This is a small parity change rather than closure of the entire account-fidelity issue.
+## Not part of this implementation
+
+This typed-model phase does **not** add strict UUID/date-format string parsing, new CLI options, terminal color, diagnostics, financial explanations or different Unix stream/output modes. Those should follow the planned cross-cutting contract in [Medea #44](https://github.com/black-belt-badger/medea/issues/44) and [Kirke #44](https://github.com/black-belt-badger/kirke/issues/44), after all M3 endpoint audits. Keep the parent account issue open until final acceptance review.
