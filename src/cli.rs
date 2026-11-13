@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::crypto_bars::CryptoBarsArgs;
+use crate::crypto_trades::CryptoTradesArgs;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser, PartialEq, Eq)]
@@ -41,6 +42,8 @@ pub enum Command {
 pub enum CryptoCommand {
     /// Fetch bounded historical crypto OHLCV bars.
     Bars(CryptoBarsArgs),
+    /// Fetch bounded historical crypto executions.
+    Trades(CryptoTradesArgs),
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]
@@ -238,6 +241,176 @@ mod tests {
     };
     use crate::crypto_bars::{BarsFormat, BarsSort, CryptoLocation};
     use clap::Parser;
+
+    #[test]
+    fn crypto_trades_default_to_one_page_and_us_location() {
+        let parsed =
+            Cli::try_parse_from(["medea", "crypto", "trades", "--symbols", "BTC/USD,ETH/USD"])
+                .unwrap();
+        let Command::Crypto {
+            command: CryptoCommand::Trades(options),
+        } = parsed.command
+        else {
+            panic!("expected crypto trades");
+        };
+        assert_eq!(options.symbols.0, vec!["BTC/USD", "ETH/USD"]);
+        assert_eq!(options.location, CryptoLocation::Us);
+        assert_eq!(options.limit, 1000);
+        assert_eq!(options.sort, BarsSort::Asc);
+        assert_eq!(options.max_pages, 1);
+        assert_eq!(options.format, BarsFormat::Json);
+        assert!(options.start.is_none());
+        assert!(options.end.is_none());
+        assert!(options.page_token.is_none());
+        assert!(options.output.is_none());
+    }
+
+    #[test]
+    fn parses_all_crypto_trades_filters_and_private_jsonl_output() {
+        let parsed = Cli::try_parse_from([
+            "medea",
+            "crypto",
+            "trades",
+            "--symbols",
+            "SOL/USD",
+            "--location",
+            "us-1",
+            "--start",
+            "2026-10-02T00:00:00Z",
+            "--end",
+            "2026-10-02T02:00:00Z",
+            "--limit",
+            "10000",
+            "--sort",
+            "desc",
+            "--max-pages",
+            "20",
+            "--page-token",
+            "ABC+/==",
+            "--format",
+            "jsonl",
+            "--out",
+            "trades.jsonl",
+        ])
+        .unwrap();
+        let Command::Crypto {
+            command: CryptoCommand::Trades(options),
+        } = parsed.command
+        else {
+            panic!("expected crypto trades");
+        };
+        assert_eq!(options.symbols.0, vec!["SOL/USD"]);
+        assert_eq!(options.location, CryptoLocation::Us1);
+        assert_eq!(options.start.unwrap().as_str(), "2026-10-02T00:00:00Z");
+        assert_eq!(options.end.unwrap().as_str(), "2026-10-02T02:00:00Z");
+        assert_eq!(options.limit, 10000);
+        assert_eq!(options.sort, BarsSort::Desc);
+        assert_eq!(options.max_pages, 20);
+        assert_eq!(options.page_token.unwrap().as_str(), "ABC+/==");
+        assert_eq!(options.format, BarsFormat::Jsonl);
+        assert_eq!(options.output, Some("trades.jsonl".into()));
+    }
+
+    #[test]
+    fn crypto_trades_reject_invalid_or_missing_arguments() {
+        for args in [
+            vec!["medea", "crypto", "trades"],
+            vec!["medea", "crypto", "trades", "--symbols", "BTCUSD"],
+            vec![
+                "medea",
+                "crypto",
+                "trades",
+                "--symbols",
+                "BTC/USD",
+                "--timeframe",
+                "1Min",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "trades",
+                "--symbols",
+                "BTC/USD",
+                "--limit",
+                "0",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "trades",
+                "--symbols",
+                "BTC/USD",
+                "--limit",
+                "10001",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "trades",
+                "--symbols",
+                "BTC/USD",
+                "--max-pages",
+                "21",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "trades",
+                "--symbols",
+                "BTC/USD",
+                "--location",
+                "hostile",
+            ],
+            vec!["medea", "crypto", "trades", "--symbols", "BTC/USD,,ETH/USD"],
+            vec![
+                "medea",
+                "crypto",
+                "trades",
+                "--symbols",
+                "BTC/USD",
+                "--start",
+                "yesterday",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "trades",
+                "--symbols",
+                "BTC/USD",
+                "--format",
+                "csv",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "trades",
+                "--symbols",
+                "BTC/USD",
+                "--sort",
+                "random",
+            ],
+            vec![
+                "medea",
+                "crypto",
+                "trades",
+                "--symbols",
+                "BTC/USD",
+                "--page-token",
+                "",
+            ],
+            vec!["medea", "crypto", "trades", "--symbols", "BTC/USD", "--out"],
+            vec![
+                "medea",
+                "crypto",
+                "trades",
+                "--symbols",
+                "BTC/USD",
+                "--unknown",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(args.clone()).is_err(), "{args:?}");
+        }
+    }
 
     #[test]
     fn crypto_bars_have_one_page_and_us_location_by_default() {

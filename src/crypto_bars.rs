@@ -244,16 +244,23 @@ fn parse_bounded(value: &str, min: u16, max: u16, name: &str) -> Result<u16, Str
     Err(format!("{name} must be between {min} and {max}"))
 }
 
-fn parse_page_limit(value: &str) -> Result<u16, String> {
+pub(crate) fn parse_page_limit(value: &str) -> Result<u16, String> {
     parse_bounded(value, 1, 10000, "Page limit")
 }
 
-fn parse_max_pages(value: &str) -> Result<u8, String> {
+pub(crate) fn parse_max_pages(value: &str) -> Result<u8, String> {
     parse_bounded(value, 1, 20, "Maximum pages").map(|n| n as u8)
 }
 
 pub fn validate_date_range(options: &CryptoBarsArgs) -> Result<(), String> {
-    if let (Some(start), Some(end)) = (&options.start, &options.end)
+    validate_instant_range(options.start.as_ref(), options.end.as_ref())
+}
+
+pub(crate) fn validate_instant_range(
+    start: Option<&BarsInstant>,
+    end: Option<&BarsInstant>,
+) -> Result<(), String> {
+    if let (Some(start), Some(end)) = (start, end)
         && start.utc > end.utc
     {
         return Err("--start must not be later than --end".into());

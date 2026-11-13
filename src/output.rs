@@ -3,6 +3,31 @@ use std::path::Path;
 
 use tempfile::Builder;
 
+/// Stream to an owner-only temporary file and replace the destination only
+/// after the entire operation succeeds. Failure drops the tempfile, leaving
+/// the previous destination untouched.
+pub fn with_private_output<T>(
+    path: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> Result<T, String>,
+) -> Result<T, String> {
+    let directory = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut temporary = Builder::new()
+        .prefix(".medea-json-")
+        .tempfile_in(directory)
+        .map_err(|err| format!("Could not save crypto trades: {err}"))?;
+    let result = write(temporary.as_file_mut())?;
+    temporary
+        .flush()
+        .map_err(|err| format!("Could not save crypto trades: {err}"))?;
+    temporary
+        .persist(path)
+        .map_err(|err| format!("Could not save crypto trades: {}", err.error))?;
+    Ok(result)
+}
+
 pub fn save_private_json(path: &Path, bytes: &[u8]) -> io::Result<()> {
     // tempfile uses an owner-only file on Unix, in the destination directory.
     // Persist renames it over the destination, so a preexisting public file

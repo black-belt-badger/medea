@@ -7,6 +7,8 @@ Versions use [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Added
+- `medea crypto trades` fetches bounded historical individual crypto executions with validated symbols, locations, date bounds and continuation tokens, reusing the authenticated read-only market-data request builder.
+- Precise numeric trade IDs/prices/sizes, nanosecond timestamp strings, optional taker sides, incremental JSON/JSONL output and atomic private rollback on partial failures; offline and live integration tests.
 - `medea crypto bars` retrieves historical crypto OHLCV from Alpaca Market Data with typed, validated timeframes, locations, date bounds, sort and bounded next-token pagination.
 - Exact decimal-number decoding and nanosecond timestamp strings, complete JSON page-envelope export, JSONL records, private output, offline tests and a real market-data integration check.
 - `medea order get ORDER_ID` retrieves an individual paper order by validated UUID, with optional `--nested` and private `--out PATH` for full provider JSON.
