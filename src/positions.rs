@@ -66,7 +66,7 @@ pub struct Position {
     prev_swap_rate: Option<String>,
     qty: String,
     qty_available: Option<String>,
-    side: PositionSide,
+    pub(crate) side: PositionSide,
     swap_rate: Option<String>,
     symbol: String,
     unrealized_intraday_pl: String,

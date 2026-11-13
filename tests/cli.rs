@@ -25,10 +25,13 @@ fn help_lists_positions_command() {
 }
 
 #[test]
-fn positions_help_lists_output_option() {
+fn positions_help_lists_output_and_unix_options() {
     let result = cli(&["positions", "--help"]);
     assert!(result.status.success());
-    assert!(String::from_utf8_lossy(&result.stdout).contains("--out"));
+    let text = String::from_utf8_lossy(&result.stdout);
+    for expected in ["--out", "--format", "--check", "json", "text"] {
+        assert!(text.contains(expected), "missing {expected}");
+    }
 }
 
 #[test]
@@ -48,11 +51,38 @@ fn missing_positions_output_path_is_invalid_cli() {
 }
 
 #[test]
+fn positions_json_and_check_are_accepted_before_credential_loading() {
+    for args in [
+        vec!["positions", "--format", "json"],
+        vec!["positions", "--format", "text", "--check"],
+        vec![
+            "positions",
+            "--format",
+            "json",
+            "--check",
+            "--out",
+            "positions.json",
+        ],
+    ] {
+        let result = cli(&args);
+        assert!(!result.status.success());
+        assert!(result.stdout.is_empty());
+        assert!(
+            String::from_utf8_lossy(&result.stderr)
+                .contains("Missing environment variable: APCA_API_KEY_ID")
+        );
+    }
+}
+
+#[test]
 fn positions_reject_unsupported_filter_flags_before_credentials() {
     for args in [
         vec!["positions", "--symbol", "BTCUSD"],
         vec!["positions", "--asset-class", "crypto"],
         vec!["positions", "--limit", "5"],
+        vec!["positions", "--format", "jsonl"],
+        vec!["positions", "--format"],
+        vec!["positions", "--check", "true"],
     ] {
         let result = cli(&args);
         assert!(!result.status.success(), "{args:?}");

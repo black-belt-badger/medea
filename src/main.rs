@@ -19,6 +19,7 @@ mod order_types;
 mod orders;
 mod output;
 mod positions;
+mod positions_findings;
 
 use clap::Parser;
 use std::io::{self, Write};
@@ -27,7 +28,7 @@ use std::path::Path;
 use account::{decode_account, render_account_summary};
 use account_findings::account_findings;
 use assets::{decode_assets, render_assets_summary};
-use cli::{AccountFormat, Cli, Command, CryptoCommand, OrderCommand, OrderId};
+use cli::{Cli, Command, CryptoCommand, OrderCommand, OrderId, ReadFormat};
 use client::{
     ClientError, fetch_account, fetch_assets, fetch_order, fetch_orders, fetch_positions,
 };
@@ -37,6 +38,7 @@ use order_lookup::decode_order_lookup;
 use orders::{decode_orders, render_order_summary, render_orders_summary};
 use output::save_private_json;
 use positions::{decode_positions, render_positions_summary};
+use positions_findings::positions_findings;
 
 fn main() {
     if let Err(message) = run(Cli::parse()) {
@@ -65,9 +67,9 @@ fn run(cli: Cli) -> Result<(), String> {
                 options.format,
                 options.check,
             )?;
-            if write_account_stdout(&payload)? {
+            if write_cli_stdout(&payload)? {
                 for finding in &findings {
-                    eprintln!("{}", render_account_finding(finding));
+                    eprintln!("{}", render_cli_finding(finding));
                 }
             }
             Ok(())
@@ -75,10 +77,17 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::Positions(options) => {
             let credentials = load_credentials().map_err(|err| err.to_string())?;
             let response = fetch_positions(&credentials).map_err(|err| err.to_string())?;
-            print!(
-                "{}",
-                present_positions(&response, options.output.as_deref())?
-            );
+            let (payload, findings) = present_positions(
+                &response,
+                options.output.as_deref(),
+                options.format,
+                options.check,
+            )?;
+            if write_cli_stdout(&payload)? {
+                for finding in &findings {
+                    eprintln!("{}", render_cli_finding(finding));
+                }
+            }
             Ok(())
         }
         Command::Order {
@@ -120,7 +129,7 @@ fn run(cli: Cli) -> Result<(), String> {
 fn present_account(
     response: &[u8],
     output: Option<&Path>,
-    format: AccountFormat,
+    format: ReadFormat,
     check: bool,
 ) -> Result<(Vec<u8>, Vec<Finding>), String> {
     let account =
@@ -132,8 +141,8 @@ fn present_account(
     };
     let payload = match output {
         None => match format {
-            AccountFormat::Text => render_account_summary(&account).into_bytes(),
-            AccountFormat::Json => response.to_vec(),
+            ReadFormat::Text => render_account_summary(&account).into_bytes(),
+            ReadFormat::Json => response.to_vec(),
         },
         Some(path) => {
             save_private_json(path, response)
@@ -145,21 +154,21 @@ fn present_account(
 }
 
 // Treat an intentionally closed consumer pipe as success, but not unrelated IO.
-fn write_account_stdout(payload: &[u8]) -> Result<bool, String> {
+fn write_cli_stdout(payload: &[u8]) -> Result<bool, String> {
     let stdout = io::stdout();
     let mut output = stdout.lock();
-    write_account_bytes(&mut output, payload)
+    write_cli_bytes(&mut output, payload)
 }
 
-fn write_account_bytes<W: Write>(output: &mut W, payload: &[u8]) -> Result<bool, String> {
+fn write_cli_bytes<W: Write>(output: &mut W, payload: &[u8]) -> Result<bool, String> {
     match output.write_all(payload).and_then(|_| output.flush()) {
         Ok(()) => Ok(true),
         Err(err) if err.kind() == io::ErrorKind::BrokenPipe => Ok(false),
-        Err(_) => Err("Could not write account output.".to_owned()),
+        Err(_) => Err("Could not write CLI output.".to_owned()),
     }
 }
 
-fn render_account_finding(finding: &Finding) -> String {
+fn render_cli_finding(finding: &Finding) -> String {
     format!(
         "{} {} ({}): {}",
         finding.severity.as_str().to_uppercase(),
@@ -197,20 +206,31 @@ mod account_unix_tests;
 
 // One testable boundary for sensitive portfolio output and validation.
 // A malformed upstream payload must never appear on stdout or replace a file.
-fn present_positions(response: &[u8], output: Option<&Path>) -> Result<String, String> {
+fn present_positions(
+    response: &[u8],
+    output: Option<&Path>,
+    format: ReadFormat,
+    check: bool,
+) -> Result<(Vec<u8>, Vec<Finding>), String> {
     let positions =
         decode_positions(response).map_err(|_| "Invalid Alpaca positions response.".to_owned())?;
-    match output {
-        None => Ok(render_positions_summary(&positions)),
+    let findings = if check {
+        positions_findings(&positions)
+    } else {
+        Vec::new()
+    };
+    let payload = match output {
+        None => match format {
+            ReadFormat::Text => render_positions_summary(&positions).into_bytes(),
+            ReadFormat::Json => response.to_vec(),
+        },
         Some(path) => {
             save_private_json(path, response)
                 .map_err(|err| format!("Could not save positions JSON: {err}"))?;
-            Ok(format!(
-                "Saved complete positions JSON to {}\n",
-                path.display()
-            ))
+            format!("Saved complete positions JSON to {}\n", path.display()).into_bytes()
         }
-    }
+    };
+    Ok((payload, findings))
 }
 
 #[cfg(test)]
@@ -220,6 +240,10 @@ mod assets_acceptance_tests;
 #[cfg(test)]
 #[path = "positions_acceptance_tests.rs"]
 mod positions_acceptance_tests;
+
+#[cfg(test)]
+#[path = "positions_unix_tests.rs"]
+mod positions_unix_tests;
 
 // Validate the complete array before any user-visible output or file export.
 // Keep the original provider bytes for lossless explicit JSON exports.

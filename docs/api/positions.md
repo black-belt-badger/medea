@@ -113,3 +113,7 @@ does not clobber an existing export.
 This closes the endpoint-specific acceptance work; later output changes must
 be designed together in [Kirke #44](https://github.com/black-belt-badger/kirke/issues/44)
 and [Medea #44](https://github.com/black-belt-badger/medea/issues/44).
+
+## Unix output extension (shared CLI parent #44)
+
+Both Kirke and Medea now accept `positions --format text|json` and `--check`. The no-flag summary is unchanged, `--format json` emits the original validated provider JSON array on stdout, and `--check` emits only stable, sanitized empty-portfolio / unknown-side findings to stderr. Warnings do not fail a successful read. The existing private atomic `--out PATH` and path notice are retained; a consumer closing a stdout pipe is benign. Other CLI flags, colors and exit statuses remain separately proposed in [the shared CLI contract](../cli-contract.md). This extension supersedes the earlier deferral of those two positions flags above.
