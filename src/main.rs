@@ -116,17 +116,7 @@ fn run(cli: Cli) -> Result<(), String> {
             options.validate()?;
             let credentials = load_credentials().map_err(|err| err.to_string())?;
             let response = fetch_assets(&credentials, &options).map_err(|err| err.to_string())?;
-            // Validate even when exporting complete provider JSON.
-            let assets = decode_assets(&response)
-                .map_err(|_| "Invalid Alpaca assets response.".to_owned())?;
-            match options.output {
-                None => print!("{}", render_assets_summary(&assets)),
-                Some(path) => {
-                    save_private_json(&path, &response)
-                        .map_err(|err| format!("Could not save assets JSON: {err}"))?;
-                    println!("Saved complete assets JSON to {}", path.display());
-                }
-            }
+            print!("{}", present_assets(&response, options.output.as_deref())?);
             Ok(())
         }
     }
@@ -150,6 +140,28 @@ fn present_account(response: &[u8], output: Option<&Path>) -> Result<String, Str
     }
 }
 
+// Keep assets presentation testable with offline, synthetic provider responses.
+// Invalid payloads must not replace a previous file or reach stdout.
+fn present_assets(response: &[u8], output: Option<&Path>) -> Result<String, String> {
+    let assets =
+        decode_assets(response).map_err(|_| "Invalid Alpaca assets response.".to_owned())?;
+    match output {
+        None => Ok(render_assets_summary(&assets)),
+        Some(path) => {
+            save_private_json(path, response)
+                .map_err(|err| format!("Could not save assets JSON: {err}"))?;
+            Ok(format!(
+                "Saved complete assets JSON to {}\n",
+                path.display()
+            ))
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "account_acceptance_tests.rs"]
 mod account_acceptance_tests;
+
+#[cfg(test)]
+#[path = "assets_acceptance_tests.rs"]
+mod assets_acceptance_tests;

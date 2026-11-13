@@ -157,6 +157,29 @@ fn invalid_assets_csv_is_rejected_by_clap_without_credentials_or_stdout() {
 }
 
 #[test]
+fn assets_reject_unsupported_filters_and_repeated_args_before_credentials() {
+    for args in [
+        vec!["assets", "--symbol", "BTC/USD"],
+        vec!["assets", "--limit", "10"],
+        vec!["assets", "--format", "json"],
+        vec!["assets", "--exchange", "NASDAQ", "--exchange", "NYSE"],
+        vec![
+            "assets",
+            "--attributes",
+            "has_options",
+            "--attributes",
+            "ipo",
+        ],
+    ] {
+        let output = cli(&args);
+        assert!(!output.status.success(), "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!stderr.contains("Missing environment variable"), "{args:?}");
+    }
+}
+
+#[test]
 fn help_lists_orders_command() {
     let result = cli(&["--help"]);
     assert!(result.status.success());

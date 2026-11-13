@@ -77,3 +77,36 @@ Offline tests cover all ten asset classes, nine valid query exchanges, eight att
 Opt-in `./scripts/cd.sh` tests the real paper API, including a NASDAQ/has_options filtered request, checks the result shape and private file permissions. No personal account data belongs in CI or fixtures.
 
 **Deferred:** UUID/date format validation, alternate output formats, shell completion, business interpretation, color, diagnostics, Unix pipeline conventions. See [Medea #44](https://github.com/black-belt-badger/medea/issues/44) and [Kirke #44](https://github.com/black-belt-badger/kirke/issues/44). Keep the parent endpoint M3 issue open for final review.
+
+## Offline end-to-end acceptance and CLI examples
+
+The application deliberately retains the established **crypto-first** default (matching
+Kirke). Alpaca itself defaults to `us_equity` when `asset_class` is absent, so
+Medea always sends `asset_class=crypto` for `medea assets`. The default is a
+consumer policy, not an implicit Alpaca API default.
+
+| Example / condition | Contract |
+| --- | --- |
+| `medea assets --help` | Exit 0, help with all four request filters and `--out`; no credentials or HTTP |
+| `medea assets` | Authenticated paper-only GET with `asset_class=crypto`; concise human summary |
+| `medea assets --asset-class us_equity --status inactive --exchange NASDAQ,NYSE --attributes has_options,ipo` | All four parameters encoded once with comma-separated lists; no dropped filters; any-match attribute semantics are applied by Alpaca |
+| `medea assets --asset-class us_index --exchange INDEX` | Allowed; other exchange filters for `us_index`, or any exchange filter for crypto, rejected before credentials |
+| `medea assets --out existing-dir/assets.json` | Validate entire array before output; save original bytes atomically (0600 on Unix); print success notice only |
+| API returns `[]` | Exit 0; concise `No matching assets.` summary, or original `[]` export |
+| Missing credentials, unsupported flags, malformed/duplicate CSV, repeated filter flags | Nonzero exit; diagnostics on stderr without provider data |
+| Invalid JSON, non-array response, null element, wrong field type, missing required property | Nonzero exit; fixed invalid-response message; no stdout and prior export unchanged |
+| HTTP 401/403/429/5xx, request timeout, or connection failure | Nonzero exit; sanitized error with no credentials or upstream response body |
+| Export directory missing/unwritable | Nonzero exit; no success notice or partial destination file |
+
+The offline tests in `src/assets_acceptance_tests.rs` exercise the actual
+summary/export boundary using synthetic crypto and unknown future asset records,
+arbitrarily precise numbers, private source IDs, extra fields, `[]`, malformed
+responses, preexisting destination files and Unix owner-only permissions.
+A separate client test passes real parsed CLI options through the HTTP request
+builder, explicitly checking the crypto-first default and preservation of every
+supplied filter; CLI integration tests reject unsupported and repeated flags
+before loading credentials.
+
+These tests use no real Alpaca secrets and never call the network.
+Shared Kirke/Medea diagnostics, shell completion, redaction modes, terminal
+colors and Unix pipeline policy remain in [#44](https://github.com/black-belt-badger/medea/issues/44).
