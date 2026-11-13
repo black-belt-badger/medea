@@ -111,6 +111,27 @@ fn orders_request(
         query.append_pair("symbols", &symbols.0.join(","));
     }
     query.append_pair("direction", options.direction.as_query());
+    if let Some(after) = &options.after {
+        query.append_pair("after", after.as_str());
+    }
+    if let Some(until) = &options.until {
+        query.append_pair("until", until.as_str());
+    }
+    if options.nested {
+        query.append_pair("nested", "true");
+    }
+    if let Some(side) = options.side {
+        query.append_pair("side", side.as_query());
+    }
+    if let Some(classes) = &options.asset_classes {
+        query.append_pair("asset_class", &classes.as_query());
+    }
+    if let Some(order_id) = &options.before_order_id {
+        query.append_pair("before_order_id", order_id.as_str());
+    }
+    if let Some(order_id) = &options.after_order_id {
+        query.append_pair("after_order_id", order_id.as_str());
+    }
     drop(query);
     Ok(request)
 }
@@ -696,6 +717,23 @@ mod tests {
         );
     }
 
+    fn sample_orders() -> OrdersArgs {
+        OrdersArgs {
+            status: OrderStatus::Open,
+            limit: None,
+            symbols: None,
+            direction: OrderDirection::Desc,
+            output: None,
+            after: None,
+            until: None,
+            nested: false,
+            side: None,
+            asset_classes: None,
+            before_order_id: None,
+            after_order_id: None,
+        }
+    }
+
     #[test]
     fn orders_use_shared_paper_auth_and_safe_defaults() {
         let client = authenticated_client().unwrap();
@@ -709,6 +747,13 @@ mod tests {
             symbols: None,
             direction: OrderDirection::Desc,
             output: None,
+            after: None,
+            until: None,
+            nested: false,
+            side: None,
+            asset_classes: None,
+            before_order_id: None,
+            after_order_id: None,
         };
         let orders = orders_request(&client, &creds, &options).unwrap();
         let account = account_request(&client, &creds).unwrap();
@@ -734,11 +779,112 @@ mod tests {
             symbols: Some(OrderSymbols(vec!["BTCUSD".into(), "AAPL".into()])),
             direction: OrderDirection::Asc,
             output: None,
+            after: None,
+            until: None,
+            nested: false,
+            side: None,
+            asset_classes: None,
+            before_order_id: None,
+            after_order_id: None,
         };
         let orders = orders_request(&client, &creds, &options).unwrap();
         assert_eq!(
             orders.url().query(),
             Some("status=all&limit=500&symbols=BTCUSD%2CAAPL&direction=asc")
+        );
+    }
+
+    #[test]
+    fn orders_encode_every_filter_and_preserve_precise_timestamp_offsets() {
+        use crate::order_filters::{OrderAssetClass, OrderAssetClasses, OrderSideFilter};
+
+        let client = authenticated_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let options = OrdersArgs {
+            status: OrderStatus::All,
+            limit: Some(500),
+            symbols: Some(OrderSymbols(vec!["BTCUSD".into(), "AAPL".into()])),
+            direction: OrderDirection::Asc,
+            output: None,
+            after: Some("2026-11-12T00:00:00.123456789Z".parse().unwrap()),
+            until: Some("2026-11-12T04:00:00+01:00".parse().unwrap()),
+            nested: true,
+            side: Some(OrderSideFilter::Buy),
+            asset_classes: Some(OrderAssetClasses(vec![
+                OrderAssetClass::Class(AssetClass::UsEquity),
+                OrderAssetClass::Class(AssetClass::Crypto),
+            ])),
+            before_order_id: None,
+            after_order_id: None,
+        };
+        options.validate().unwrap();
+        let request = orders_request(&client, &creds, &options).unwrap();
+        assert_eq!(request.method(), Method::GET);
+        assert_eq!(request.url().scheme(), "https");
+        assert_eq!(request.url().host_str(), Some("paper-api.alpaca.markets"));
+        assert_eq!(request.url().path(), "/v2/orders");
+        assert!(request.body().is_none());
+        assert_eq!(
+            request.url().query(),
+            Some(concat!(
+                "status=all&limit=500&symbols=BTCUSD%2CAAPL&direction=asc",
+                "&after=2026-11-12T00%3A00%3A00.123456789Z",
+                "&until=2026-11-12T04%3A00%3A00%2B01%3A00",
+                "&nested=true&side=buy&asset_class=us_equity%2Ccrypto",
+            ))
+        );
+        assert_eq!(
+            request.headers(),
+            account_request(&client, &creds).unwrap().headers()
+        );
+    }
+
+    #[test]
+    fn orders_before_cursor_is_the_only_additional_pagination_parameter() {
+        let client = authenticated_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let options = OrdersArgs {
+            before_order_id: Some("9275f66a-0a1b-4a22-8c55-167416c7cf14".parse().unwrap()),
+            ..sample_orders()
+        };
+        options.validate().unwrap();
+        let req = orders_request(&client, &creds, &options).unwrap();
+        assert_eq!(
+            req.url().query(),
+            Some("status=open&direction=desc&before_order_id=9275f66a-0a1b-4a22-8c55-167416c7cf14"),
+        );
+        assert!(!req.url().as_str().contains("page_token"));
+    }
+
+    #[test]
+    fn orders_after_cursor_is_separate_and_all_class_is_encoded_as_all() {
+        use crate::order_filters::{OrderAssetClass, OrderAssetClasses};
+
+        let client = authenticated_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let options = OrdersArgs {
+            status: OrderStatus::Closed,
+            limit: Some(1),
+            asset_classes: Some(OrderAssetClasses(vec![OrderAssetClass::All])),
+            after_order_id: Some("9275f66a-0a1b-4a22-8c55-167416c7cf14".parse().unwrap()),
+            ..sample_orders()
+        };
+        options.validate().unwrap();
+        let req = orders_request(&client, &creds, &options).unwrap();
+        assert_eq!(
+            req.url().query(),
+            Some(
+                "status=closed&limit=1&direction=desc&asset_class=all&after_order_id=9275f66a-0a1b-4a22-8c55-167416c7cf14"
+            ),
         );
     }
 
