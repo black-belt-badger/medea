@@ -147,7 +147,21 @@ medea assets --asset-class crypto --status inactive
 medea assets --status all
 ```
 
-`--asset-class` accepts `crypto` or `us_equity`. `--status` accepts `active`, `inactive`, or `all`; the omitted status means no filter. The command displays the symbol, class, status, name, tradability, and fractional-trading eligibility when provided. It prints `No matching assets.` for an empty response.
+`--asset-class` supports every documented class: `us_equity`, `us_option`, `crypto` (Medea default), `crypto_perp`, `treasury`, `corporate`, `global_equity`, `us_index`, `us_equity_chain`, `ipo`. `--status` accepts `active`, `inactive`, or `all`; omitted means no status filter.
+
+Additional request filters:
+
+```sh
+medea assets --asset-class us_equity --exchange NASDAQ,NYSE --attributes has_options,overnight_tradable
+medea assets --asset-class us_index --exchange INDEX
+medea assets --asset-class us_equity --attributes ptp_no_exception,ipo --out output/assets.json
+```
+
+`--exchange` accepts nine comma-separated values: `AMEX`, `ARCA`, `BATS`, `NYSE`, `NASDAQ`, `NYSEARCA`, `OTC`, `TXSE`, `INDEX`. Use it **only** with `us_equity` (not INDEX) or `us_index` (INDEX only). It is rejected for crypto and other asset classes, rather than being silently ignored.
+
+`--attributes` accepts any of the eight documented values: `ptp_no_exception`, `ptp_with_exception`, `ipo`, `has_options`, `options_late_close`, `fractional_eh_enabled`, `overnight_tradable`, `overnight_halted`. More than one attribute means **any match (OR)**, not all. Empty, duplicate or unknown CSV entries are rejected.
+
+The decoded response covers all 19 documented properties, with typed class/exchange/status/attribute enums, required fields, nullable metadata and exact decimal strings. The concise summary continues to show symbol, class, status, name, tradability and fractionability. It prints `No matching assets.` for an empty array. See [M3 Assets API coverage](docs/api/assets.md).
 
 Save the full original JSON array with private, atomic file replacement:
 

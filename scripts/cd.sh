@@ -22,6 +22,9 @@ cargo build --locked --release --quiet
 ./target/release/medea assets --help > /dev/null
 ./target/release/medea assets --status active > ./output/assets-summary.txt
 ./target/release/medea assets --status active --out ./output/assets.json > ./output/assets-written.txt
+# Exercise M3 request filters together using read-only paper data.
+./target/release/medea assets --asset-class us_equity --exchange NASDAQ --attributes has_options \
+  --out ./output/assets-nasdaq-options.json > ./output/assets-nasdaq-options-written.txt
 ./target/release/medea orders --help > /dev/null
 ./target/release/medea orders --status all --limit 10 > ./output/orders-summary.txt
 ./target/release/medea orders --status all --limit 10 --out ./output/orders.json > ./output/orders-written.txt
@@ -44,6 +47,8 @@ grep -q '^Medea — Alpaca paper assets$' ./output/assets-summary.txt
 jq -e 'type == "array" and all(.[]; .class == "crypto" and (.tradable | type == "boolean"))' ./output/assets.json > /dev/null
 test "$(stat -c '%a' ./output/assets.json)" = 600
 test "$(stat -c '%a' ./output/assets-summary.txt)" = 600
+jq -e 'type == "array" and all(.[]; .class == "us_equity" and .exchange == "NASDAQ" and ((.attributes // []) | index("has_options") != null))' ./output/assets-nasdaq-options.json > /dev/null
+test "$(stat -c '%a' ./output/assets-nasdaq-options.json)" = 600
 
 test -s ./output/orders-summary.txt
 grep -q '^Medea — Alpaca paper orders$' ./output/orders-summary.txt

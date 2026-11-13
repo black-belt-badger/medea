@@ -55,12 +55,18 @@ pub struct OutputArgs {
 
 #[derive(Debug, Args, PartialEq, Eq)]
 pub struct AssetsArgs {
-    /// Asset class: crypto (default) or us_equity.
+    /// Asset class: crypto (CLI default); Alpaca API itself defaults to us_equity.
     #[arg(long = "asset-class", value_enum, default_value_t = AssetClass::Crypto)]
     pub asset_class: AssetClass,
     /// Filter by active, inactive, or all (omitted by default).
     #[arg(long, value_enum)]
     pub status: Option<AssetStatus>,
+    /// Comma-separated equity exchanges (e.g. NASDAQ,NYSE), or INDEX for us_index.
+    #[arg(long = "exchange", value_name = "EXCHANGES")]
+    pub exchanges: Option<AssetExchanges>,
+    /// Comma-separated asset attributes; Alpaca matches ANY selected attribute.
+    #[arg(long = "attributes", value_name = "ATTRIBUTES")]
+    pub attributes: Option<AssetAttributes>,
     /// Write the complete JSON response to PATH.
     #[arg(long = "out", value_name = "PATH")]
     pub output: Option<PathBuf>,
@@ -71,6 +77,19 @@ pub enum AssetClass {
     Crypto,
     #[value(name = "us_equity")]
     UsEquity,
+    #[value(name = "us_option")]
+    UsOption,
+    #[value(name = "crypto_perp")]
+    CryptoPerp,
+    Treasury,
+    Corporate,
+    #[value(name = "global_equity")]
+    GlobalEquity,
+    #[value(name = "us_index")]
+    UsIndex,
+    #[value(name = "us_equity_chain")]
+    UsEquityChain,
+    Ipo,
 }
 
 impl AssetClass {
@@ -78,6 +97,14 @@ impl AssetClass {
         match self {
             Self::Crypto => "crypto",
             Self::UsEquity => "us_equity",
+            Self::UsOption => "us_option",
+            Self::CryptoPerp => "crypto_perp",
+            Self::Treasury => "treasury",
+            Self::Corporate => "corporate",
+            Self::GlobalEquity => "global_equity",
+            Self::UsIndex => "us_index",
+            Self::UsEquityChain => "us_equity_chain",
+            Self::Ipo => "ipo",
         }
     }
 }
@@ -95,6 +122,164 @@ impl AssetStatus {
             Self::Active => "active",
             Self::Inactive => "inactive",
             Self::All => "all",
+        }
+    }
+}
+
+/// Exchange filtering supports equities and indexes, not crypto venues.
+/// The response exchange vocabulary is deliberately broader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssetExchange {
+    Amex,
+    Arca,
+    Bats,
+    Nyse,
+    Nasdaq,
+    Nysearca,
+    Otc,
+    Txse,
+    Index,
+}
+
+impl AssetExchange {
+    pub fn as_query(self) -> &'static str {
+        match self {
+            Self::Amex => "AMEX",
+            Self::Arca => "ARCA",
+            Self::Bats => "BATS",
+            Self::Nyse => "NYSE",
+            Self::Nasdaq => "NASDAQ",
+            Self::Nysearca => "NYSEARCA",
+            Self::Otc => "OTC",
+            Self::Txse => "TXSE",
+            Self::Index => "INDEX",
+        }
+    }
+
+    fn from_query(value: &str) -> Option<Self> {
+        match value {
+            "AMEX" => Some(Self::Amex),
+            "ARCA" => Some(Self::Arca),
+            "BATS" => Some(Self::Bats),
+            "NYSE" => Some(Self::Nyse),
+            "NASDAQ" => Some(Self::Nasdaq),
+            "NYSEARCA" => Some(Self::Nysearca),
+            "OTC" => Some(Self::Otc),
+            "TXSE" => Some(Self::Txse),
+            "INDEX" => Some(Self::Index),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssetAttribute {
+    PtpNoException,
+    PtpWithException,
+    Ipo,
+    HasOptions,
+    OptionsLateClose,
+    FractionalEhEnabled,
+    OvernightTradable,
+    OvernightHalted,
+}
+
+impl AssetAttribute {
+    pub fn as_query(self) -> &'static str {
+        match self {
+            Self::PtpNoException => "ptp_no_exception",
+            Self::PtpWithException => "ptp_with_exception",
+            Self::Ipo => "ipo",
+            Self::HasOptions => "has_options",
+            Self::OptionsLateClose => "options_late_close",
+            Self::FractionalEhEnabled => "fractional_eh_enabled",
+            Self::OvernightTradable => "overnight_tradable",
+            Self::OvernightHalted => "overnight_halted",
+        }
+    }
+
+    fn from_query(value: &str) -> Option<Self> {
+        match value {
+            "ptp_no_exception" => Some(Self::PtpNoException),
+            "ptp_with_exception" => Some(Self::PtpWithException),
+            "ipo" => Some(Self::Ipo),
+            "has_options" => Some(Self::HasOptions),
+            "options_late_close" => Some(Self::OptionsLateClose),
+            "fractional_eh_enabled" => Some(Self::FractionalEhEnabled),
+            "overnight_tradable" => Some(Self::OvernightTradable),
+            "overnight_halted" => Some(Self::OvernightHalted),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetExchanges(pub Vec<AssetExchange>);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetAttributes(pub Vec<AssetAttribute>);
+
+impl FromStr for AssetExchanges {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        parse_asset_csv(value, "exchanges", AssetExchange::from_query).map(Self)
+    }
+}
+
+impl FromStr for AssetAttributes {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        parse_asset_csv(value, "attributes", AssetAttribute::from_query).map(Self)
+    }
+}
+
+/// Strict comma-separated allowlist: no empty, duplicate, or silently
+/// ignored values. Spaces around commas are allowed.
+fn parse_asset_csv<T: Copy + Eq>(
+    input: &str,
+    label: &str,
+    parse_item: impl Fn(&str) -> Option<T>,
+) -> Result<Vec<T>, String> {
+    let parts: Vec<_> = input.split(',').map(str::trim).collect();
+    if parts.iter().any(|part| part.is_empty()) {
+        return Err(format!("Expected nonempty comma-separated {label}"));
+    }
+
+    let mut result = Vec::with_capacity(parts.len());
+    for part in parts {
+        let item = parse_item(part).ok_or_else(|| format!("Unsupported asset {label}: {part}"))?;
+        if result.contains(&item) {
+            return Err(format!("Duplicate asset {label}: {part}"));
+        }
+        result.push(item);
+    }
+    Ok(result)
+}
+
+impl AssetsArgs {
+    /// Validate cross-field semantics before loading credentials or doing IO.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.attributes.as_ref().is_some_and(|a| a.0.is_empty()) {
+            return Err("Attribute filter must contain at least one attribute".into());
+        }
+        let Some(exchanges) = &self.exchanges else {
+            return Ok(());
+        };
+        if exchanges.0.is_empty() {
+            return Err("Exchange filter must contain at least one exchange".into());
+        }
+        match self.asset_class {
+            AssetClass::UsEquity if exchanges.0.contains(&AssetExchange::Index) => {
+                Err("INDEX exchange requires --asset-class us_index".into())
+            }
+            AssetClass::UsEquity => Ok(()),
+            AssetClass::UsIndex if exchanges.0.iter().all(|e| *e == AssetExchange::Index) => Ok(()),
+            AssetClass::UsIndex => {
+                Err("us_index assets can only be filtered by exchange INDEX".into())
+            }
+            _ => Err("Exchange filtering is available only for us_equity or us_index".into()),
         }
     }
 }
@@ -236,8 +421,9 @@ impl FromStr for OrderId {
 #[cfg(test)]
 mod tests {
     use super::{
-        AssetClass, AssetStatus, AssetsArgs, Cli, Command, CryptoCommand, OrderCommand,
-        OrderDirection, OrderGetArgs, OrderId, OrderStatus, OrderSymbols, OrdersArgs, OutputArgs,
+        AssetAttribute, AssetAttributes, AssetClass, AssetExchange, AssetExchanges, AssetStatus,
+        AssetsArgs, Cli, Command, CryptoCommand, OrderCommand, OrderDirection, OrderGetArgs,
+        OrderId, OrderStatus, OrderSymbols, OrdersArgs, OutputArgs,
     };
     use crate::crypto_bars::{BarsFormat, BarsSort, CryptoLocation};
     use clap::Parser;
@@ -672,6 +858,8 @@ mod tests {
             Command::Assets(AssetsArgs {
                 asset_class: AssetClass::Crypto,
                 status: None,
+                exchanges: None,
+                attributes: None,
                 output: None
             })
         );
@@ -695,6 +883,8 @@ mod tests {
             Command::Assets(AssetsArgs {
                 asset_class: AssetClass::UsEquity,
                 status: Some(AssetStatus::Active),
+                exchanges: None,
+                attributes: None,
                 output: Some("assets.json".into())
             })
         );
@@ -708,6 +898,8 @@ mod tests {
             Command::Assets(AssetsArgs {
                 asset_class: AssetClass::Crypto,
                 status: Some(AssetStatus::All),
+                exchanges: None,
+                attributes: None,
                 output: None
             })
         );
@@ -717,6 +909,8 @@ mod tests {
             Command::Assets(AssetsArgs {
                 asset_class: AssetClass::Crypto,
                 status: Some(AssetStatus::Inactive),
+                exchanges: None,
+                attributes: None,
                 output: None
             })
         );
@@ -733,6 +927,199 @@ mod tests {
         ] {
             assert!(Cli::try_parse_from(args).is_err());
         }
+    }
+
+    #[test]
+    fn assets_accept_all_ten_documented_classes() {
+        for (wire, value) in [
+            ("us_equity", AssetClass::UsEquity),
+            ("us_option", AssetClass::UsOption),
+            ("crypto", AssetClass::Crypto),
+            ("crypto_perp", AssetClass::CryptoPerp),
+            ("treasury", AssetClass::Treasury),
+            ("corporate", AssetClass::Corporate),
+            ("global_equity", AssetClass::GlobalEquity),
+            ("us_index", AssetClass::UsIndex),
+            ("us_equity_chain", AssetClass::UsEquityChain),
+            ("ipo", AssetClass::Ipo),
+        ] {
+            assert_eq!(value.as_query(), wire);
+            let parsed = Cli::try_parse_from(["medea", "assets", "--asset-class", wire]).unwrap();
+            let Command::Assets(args) = parsed.command else {
+                panic!("expected assets");
+            };
+            assert_eq!(args.asset_class, value);
+        }
+    }
+
+    #[test]
+    fn assets_parse_all_nine_exchange_filter_values() {
+        for (wire, value) in [
+            ("AMEX", AssetExchange::Amex),
+            ("ARCA", AssetExchange::Arca),
+            ("BATS", AssetExchange::Bats),
+            ("NYSE", AssetExchange::Nyse),
+            ("NASDAQ", AssetExchange::Nasdaq),
+            ("NYSEARCA", AssetExchange::Nysearca),
+            ("OTC", AssetExchange::Otc),
+            ("TXSE", AssetExchange::Txse),
+            ("INDEX", AssetExchange::Index),
+        ] {
+            assert_eq!(value.as_query(), wire);
+            let filters: AssetExchanges = wire.parse().unwrap();
+            assert_eq!(filters, AssetExchanges(vec![value]));
+        }
+    }
+
+    #[test]
+    fn assets_parse_all_eight_attribute_filter_values() {
+        for (wire, value) in [
+            ("ptp_no_exception", AssetAttribute::PtpNoException),
+            ("ptp_with_exception", AssetAttribute::PtpWithException),
+            ("ipo", AssetAttribute::Ipo),
+            ("has_options", AssetAttribute::HasOptions),
+            ("options_late_close", AssetAttribute::OptionsLateClose),
+            ("fractional_eh_enabled", AssetAttribute::FractionalEhEnabled),
+            ("overnight_tradable", AssetAttribute::OvernightTradable),
+            ("overnight_halted", AssetAttribute::OvernightHalted),
+        ] {
+            assert_eq!(value.as_query(), wire);
+            let filters: AssetAttributes = wire.parse().unwrap();
+            assert_eq!(filters, AssetAttributes(vec![value]));
+        }
+    }
+
+    #[test]
+    fn assets_parse_all_filters_together_without_losing_any() {
+        let parsed = Cli::try_parse_from([
+            "medea",
+            "assets",
+            "--asset-class",
+            "us_equity",
+            "--status",
+            "active",
+            "--exchange",
+            "NASDAQ, NYSE",
+            "--attributes",
+            "has_options, ipo",
+            "--out",
+            "assets.json",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.command,
+            Command::Assets(AssetsArgs {
+                asset_class: AssetClass::UsEquity,
+                status: Some(AssetStatus::Active),
+                exchanges: Some(AssetExchanges(vec![
+                    AssetExchange::Nasdaq,
+                    AssetExchange::Nyse
+                ])),
+                attributes: Some(AssetAttributes(vec![
+                    AssetAttribute::HasOptions,
+                    AssetAttribute::Ipo
+                ])),
+                output: Some("assets.json".into()),
+            })
+        );
+    }
+
+    #[test]
+    fn assets_reject_malformed_exchange_and_attribute_csv_values() {
+        for flag in ["--exchange", "--attributes"] {
+            for value in [
+                "",
+                ",",
+                "X",
+                ",IPO",
+                "NASDAQ,",
+                "NAS%2CDAQ",
+                "NASDAQ,,NYSE",
+                "ipo,ipo",
+            ] {
+                assert!(
+                    Cli::try_parse_from(["medea", "assets", flag, value]).is_err(),
+                    "{flag} {value}"
+                );
+            }
+        }
+        assert!(Cli::try_parse_from(["medea", "assets", "--exchange", "NASDAQ,NASDAQ"]).is_err());
+        assert!(Cli::try_parse_from(["medea", "assets", "--exchange", "CRYPTO"]).is_err());
+        assert!(Cli::try_parse_from(["medea", "assets", "--attributes", "IPO"]).is_err());
+        assert!(Cli::try_parse_from(["medea", "assets", "--attributes", "ipo,ipo"]).is_err());
+        assert!(Cli::try_parse_from(["medea", "assets", "--exchange"]).is_err());
+        assert!(Cli::try_parse_from(["medea", "assets", "--attributes"]).is_err());
+    }
+
+    #[test]
+    fn assets_allow_only_equity_or_index_exchanges_and_index_only_for_us_index() {
+        for (class, filter) in [
+            (
+                AssetClass::UsEquity,
+                AssetExchanges(vec![AssetExchange::Nasdaq, AssetExchange::Nyse]),
+            ),
+            (
+                AssetClass::UsIndex,
+                AssetExchanges(vec![AssetExchange::Index]),
+            ),
+        ] {
+            let args = AssetsArgs {
+                asset_class: class,
+                status: None,
+                exchanges: Some(filter),
+                attributes: None,
+                output: None,
+            };
+            assert_eq!(args.validate(), Ok(()));
+        }
+        for (class, filter) in [
+            (
+                AssetClass::UsEquity,
+                AssetExchanges(vec![AssetExchange::Index]),
+            ),
+            (
+                AssetClass::UsIndex,
+                AssetExchanges(vec![AssetExchange::Nasdaq]),
+            ),
+            (
+                AssetClass::Crypto,
+                AssetExchanges(vec![AssetExchange::Nasdaq]),
+            ),
+            (
+                AssetClass::CryptoPerp,
+                AssetExchanges(vec![AssetExchange::Index]),
+            ),
+            (
+                AssetClass::UsOption,
+                AssetExchanges(vec![AssetExchange::Nyse]),
+            ),
+        ] {
+            let args = AssetsArgs {
+                asset_class: class,
+                status: None,
+                exchanges: Some(filter),
+                attributes: None,
+                output: None,
+            };
+            assert!(args.validate().is_err());
+        }
+    }
+
+    #[test]
+    fn assets_reject_programmatic_empty_filters_and_keep_crypto_default() {
+        let mut args = AssetsArgs {
+            asset_class: AssetClass::Crypto,
+            status: None,
+            exchanges: None,
+            attributes: None,
+            output: None,
+        };
+        assert_eq!(args.validate(), Ok(()));
+        args.exchanges = Some(AssetExchanges(vec![]));
+        assert!(args.validate().is_err());
+        args.exchanges = None;
+        args.attributes = Some(AssetAttributes(vec![]));
+        assert!(args.validate().is_err());
     }
 
     #[test]
