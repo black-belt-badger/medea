@@ -6,7 +6,8 @@ Versions use [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
-_No changes yet._
+### Changed
+- Model `account.status` and optional `account.crypto_status` as the same forward-compatible `AccountStatus` enum; unknown future values survive parsing without changing human summaries or raw provider JSON exports.
 
 ## [0.2.0] - 2026-11-13
 

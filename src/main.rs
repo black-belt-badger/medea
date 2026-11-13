@@ -1,4 +1,5 @@
 mod account;
+mod account_status;
 mod assets;
 mod cli;
 mod client;

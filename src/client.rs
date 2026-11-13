@@ -379,6 +379,22 @@ mod tests {
     }
 
     #[test]
+    fn account_request_is_paper_only_get_without_api_parameters() {
+        let client = authenticated_client().unwrap();
+        let credentials = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let request = account_request(&client, &credentials).unwrap();
+        assert_eq!(request.method(), Method::GET);
+        assert_eq!(request.url().scheme(), "https");
+        assert_eq!(request.url().host_str(), Some("paper-api.alpaca.markets"));
+        assert_eq!(request.url().path(), "/v2/account");
+        assert_eq!(request.url().query(), None);
+        assert!(request.body().is_none());
+    }
+
+    #[test]
     fn crypto_trade_request_uses_authenticated_market_data_endpoint_without_timeframe() {
         let client = authenticated_client().unwrap();
         let credentials = Credentials {
