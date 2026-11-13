@@ -1,5 +1,6 @@
 mod account;
 mod account_details;
+mod account_findings;
 mod account_status;
 mod asset_types;
 mod assets;
@@ -9,6 +10,7 @@ mod credentials;
 mod crypto_bars;
 mod crypto_quotes;
 mod crypto_trades;
+mod diagnostics;
 mod order_cancel;
 mod order_filters;
 mod order_lookup;

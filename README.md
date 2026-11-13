@@ -10,6 +10,8 @@
 
 **Current scope: read-only Alpaca paper account information, open positions, asset discovery, order history/details, and historical crypto bars, trades and quotes from Alpaca Market Data; plus an explicitly confirmed, dry-run-first crypto PAPER-order submission command.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
 
+**CLI consistency roadmap:** Medea and Kirke share a [proposed CLI/diagnostics contract](docs/cli-contract.md) for Unix pipes, output formats, secure exports and factual findings. This is a staged design: the proposed flags and exit codes are **not yet implemented**, and current commands retain their released behavior. The first implementation slice adds pure account findings without printing or acting on them.
+
 ## Requirements
 
 - Rust **1.99.1**, pinned in `rust-toolchain.toml`, installed through [rustup](https://rustup.rs/).

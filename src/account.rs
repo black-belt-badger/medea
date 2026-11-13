@@ -10,13 +10,13 @@ pub struct Account {
     #[serde(rename = "id")]
     _id: String,
     account_number: Option<String>,
-    status: AccountStatus,
+    pub(crate) status: AccountStatus,
     currency: Option<String>,
     cash: Option<String>,
     equity: Option<String>,
     buying_power: Option<String>,
-    trading_blocked: Option<bool>,
-    crypto_status: Option<AccountStatus>,
+    pub(crate) trading_blocked: Option<bool>,
+    pub(crate) crypto_status: Option<AccountStatus>,
     #[serde(flatten)]
     // The full typed response is for API fidelity today; downstream
     // account diagnostics and alternate renderers will consume it later.
