@@ -66,6 +66,6 @@ The example UUID is synthetic, not an account-specific value. Use `--after-order
 - Offline tests cover all 11 query parameters and exact encoding, both anchors, all ten classes, CSV boundaries, time-zone offsets and nanosecond timestamps, incompatible filters, defaults and CLI errors before credentials.
 - Opt-in `./scripts/cd.sh` validates a live bounded paper request with `--side buy --asset-class crypto --nested`, JSON array shape and private file mode. Tests in public CI never need credentials.
 
-**Deferred response phase:** the published `Order` schema has 37 fields and nested order legs; this PR intentionally does **not** expand the typed order response. Kirke and Medea will receive paired response-schema PRs after request parity. Keep the parent #36 issue open.
+**Response phase 2 complete:** the typed decoder now covers all 37 published order fields and the 35 nested-leg fields, including forward-compatible enum strings and exact ratios. See [Orders response fidelity](orders-response.md) for the requiredness caveats and cross-language fixture parity. Keep the parent #36 issue open for final acceptance.
 
 Shared CLI colors, diagnostics, Unix pipeline conventions and shell-completion design remain deferred to [Medea #44](https://github.com/black-belt-badger/medea/issues/44) and [Kirke #44](https://github.com/black-belt-badger/kirke/issues/44).

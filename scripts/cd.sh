@@ -68,9 +68,19 @@ test -s ./output/orders-summary.txt
 grep -q '^Medea — Alpaca paper orders$' ./output/orders-summary.txt
 jq -e 'type == "array" and (length <= 10) and all(.[]; .id and .client_order_id and .symbol and .status)' ./output/orders.json > /dev/null
 test "$(stat -c '%a' ./output/orders.json)" = 600
+# M3 order responses: typed IDs/statuses and optional nested leg objects.
+jq -e 'type == "array" and all(.[];
+  (.id | type) == "string" and
+  (.status | type) == "string" and
+  (.legs == null or ((.legs | type) == "array" and
+    all(.legs[]; (.id | type) == "string" and (.status | type) == "string"))))' ./output/orders.json > /dev/null
+
 test "$(stat -c '%a' ./output/orders-summary.txt)" = 600
 jq -e 'type == "array" and (length <= 10) and all(.[]; .side == "buy" and .asset_class == "crypto")' ./output/orders-filtered.json > /dev/null
 test "$(stat -c '%a' ./output/orders-filtered.json)" = 600
+jq -e 'type == "array" and all(.[];
+  (.legs == null or ((.legs | type) == "array" and
+    all(.legs[]; (.id | type) == "string" and (.status | type) == "string"))))' ./output/orders-filtered.json > /dev/null
 
 # A new paper account may have no orders. With an existing order, exercise
 # single-order GET using the validated server-assigned UUID from the list.

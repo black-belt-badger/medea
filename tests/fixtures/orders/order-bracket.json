@@ -1,0 +1,29 @@
+{
+  "id": "77777777-8888-4999-8aaa-bbbbbbbbbbbb",
+  "symbol": "MSFT",
+  "asset_class": "us_equity",
+  "side": "buy",
+  "status": "filled",
+  "type": "limit",
+  "order_class": "bracket",
+  "qty": "1",
+  "filled_qty": "1",
+  "limit_price": "420.5",
+  "filled_avg_price": "419.99",
+  "time_in_force": "day",
+  "legs": [
+    {
+      "id": "66666666-7777-4888-8999-aaaaaaaaaaaa",
+      "symbol": "MSFT",
+      "asset_class": "us_equity",
+      "status": "held",
+      "type": "stop",
+      "order_class": "bracket",
+      "side": "sell",
+      "qty": "1",
+      "filled_qty": "0",
+      "stop_price": "400.50",
+      "time_in_force": "gtc"
+    }
+  ]
+}
