@@ -22,7 +22,7 @@ pub struct Cli {
 #[derive(Debug, Subcommand, PartialEq, Eq)]
 pub enum Command {
     /// Fetch Alpaca account information.
-    Account(OutputArgs),
+    Account(AccountArgs),
     /// List all open positions in the Alpaca paper account.
     Positions(OutputArgs),
     /// List available Alpaca paper assets (crypto by default).
@@ -49,6 +49,26 @@ pub enum CryptoCommand {
     Trades(CryptoTradesArgs),
     /// Fetch bounded historical crypto best bid/ask quotes.
     Quotes(CryptoQuotesArgs),
+}
+
+/// Account-only output flags; other endpoints migrate after review.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AccountFormat {
+    Text,
+    Json,
+}
+
+#[derive(Debug, Args, PartialEq, Eq)]
+pub struct AccountArgs {
+    /// Write original provider JSON privately to PATH (legacy success notice retained).
+    #[arg(long = "out", value_name = "PATH")]
+    pub output: Option<PathBuf>,
+    /// Human summary (default) or raw provider JSON on stdout.
+    #[arg(long = "format", value_enum, default_value_t = AccountFormat::Text)]
+    pub format: AccountFormat,
+    /// Print factual account findings to stderr without changing exit status.
+    #[arg(long = "check")]
+    pub check: bool,
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]
@@ -461,9 +481,10 @@ impl FromStr for OrderId {
 #[cfg(test)]
 mod tests {
     use super::{
-        AssetAttribute, AssetAttributes, AssetClass, AssetExchange, AssetExchanges, AssetStatus,
-        AssetsArgs, Cli, Command, CryptoCommand, OrderCancelArgs, OrderCommand, OrderDirection,
-        OrderGetArgs, OrderId, OrderStatus, OrderSymbols, OrdersArgs, OutputArgs,
+        AccountArgs, AccountFormat, AssetAttribute, AssetAttributes, AssetClass, AssetExchange,
+        AssetExchanges, AssetStatus, AssetsArgs, Cli, Command, CryptoCommand, OrderCancelArgs,
+        OrderCommand, OrderDirection, OrderGetArgs, OrderId, OrderStatus, OrderSymbols, OrdersArgs,
+        OutputArgs,
     };
     use crate::crypto_bars::{BarsFormat, BarsSort, CryptoLocation};
     use crate::order_filters::{OrderAssetClass, OrderAssetClasses, OrderSideFilter};
@@ -860,7 +881,14 @@ mod tests {
     #[test]
     fn parses_account() {
         let cli = Cli::try_parse_from(["medea", "account"]).unwrap();
-        assert_eq!(cli.command, Command::Account(OutputArgs { output: None }));
+        assert_eq!(
+            cli.command,
+            Command::Account(AccountArgs {
+                output: None,
+                format: AccountFormat::Text,
+                check: false,
+            })
+        );
     }
 
     #[test]
@@ -868,10 +896,46 @@ mod tests {
         let cli = Cli::try_parse_from(["medea", "account", "--out", "account.json"]).unwrap();
         assert_eq!(
             cli.command,
-            Command::Account(OutputArgs {
-                output: Some("account.json".into())
+            Command::Account(AccountArgs {
+                output: Some("account.json".into()),
+                format: AccountFormat::Text,
+                check: false,
             })
         );
+    }
+
+    #[test]
+    fn account_accepts_json_and_check_with_existing_out() {
+        let cli = Cli::try_parse_from([
+            "medea",
+            "account",
+            "--format",
+            "json",
+            "--check",
+            "--out",
+            "account.json",
+        ])
+        .unwrap();
+        assert_eq!(
+            cli.command,
+            Command::Account(AccountArgs {
+                output: Some("account.json".into()),
+                format: AccountFormat::Json,
+                check: true,
+            })
+        );
+    }
+
+    #[test]
+    fn account_rejects_unsupported_format_and_check_arguments() {
+        for arguments in [
+            vec!["medea", "account", "--format", "yaml"],
+            vec!["medea", "account", "--format"],
+            vec!["medea", "account", "--check", "true"],
+            vec!["medea", "account", "--format", "jsonl"],
+        ] {
+            assert!(Cli::try_parse_from(arguments).is_err());
+        }
     }
 
     #[test]
