@@ -1185,6 +1185,34 @@ mod tests {
     }
 
     #[test]
+    fn account_auth_rate_limit_and_upstream_failures_are_sanitized() {
+        for (status, message) in [
+            (
+                StatusCode::UNAUTHORIZED,
+                "Alpaca paper API rejected the credentials (HTTP 401).",
+            ),
+            (StatusCode::FORBIDDEN, "Alpaca paper API returned HTTP 403."),
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                "Alpaca paper API returned HTTP 429.",
+            ),
+            (
+                StatusCode::BAD_GATEWAY,
+                "Alpaca paper API returned HTTP 502.",
+            ),
+            (
+                StatusCode::GATEWAY_TIMEOUT,
+                "Alpaca paper API returned HTTP 504.",
+            ),
+        ] {
+            let error = check_status(status).unwrap_err();
+            assert_eq!(error.to_string(), message);
+            assert!(!message.contains("example-secret"));
+            assert!(!message.contains("example-key"));
+        }
+    }
+
+    #[test]
     fn rejects_invalid_header_value_without_echoing_it() {
         let client = authenticated_client().unwrap();
         let creds = Credentials {

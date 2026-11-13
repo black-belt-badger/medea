@@ -19,6 +19,7 @@ mod output;
 mod positions;
 
 use clap::Parser;
+use std::path::Path;
 
 use account::{decode_account, render_account_summary};
 use assets::{decode_assets, render_assets_summary};
@@ -51,17 +52,7 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::Account(options) => {
             let credentials = load_credentials().map_err(|err| err.to_string())?;
             let response = fetch_account(&credentials).map_err(|err| err.to_string())?;
-            // Always validate the response, including for --out.
-            let account = decode_account(&response)
-                .map_err(|_| "Invalid Alpaca account response.".to_owned())?;
-            match options.output {
-                None => print!("{}", render_account_summary(&account)),
-                Some(path) => {
-                    save_private_json(&path, &response)
-                        .map_err(|err| format!("Could not save account JSON: {err}"))?;
-                    println!("Saved complete account JSON to {}", path.display());
-                }
-            }
+            print!("{}", present_account(&response, options.output.as_deref())?);
             Ok(())
         }
         Command::Positions(options) => {
@@ -140,3 +131,25 @@ fn run(cli: Cli) -> Result<(), String> {
         }
     }
 }
+
+// Keep account presentation testable without credentials or network access.
+// Invalid provider data must never reach either stdout or a private export.
+fn present_account(response: &[u8], output: Option<&Path>) -> Result<String, String> {
+    let account =
+        decode_account(response).map_err(|_| "Invalid Alpaca account response.".to_owned())?;
+    match output {
+        None => Ok(render_account_summary(&account)),
+        Some(path) => {
+            save_private_json(path, response)
+                .map_err(|err| format!("Could not save account JSON: {err}"))?;
+            Ok(format!(
+                "Saved complete account JSON to {}\n",
+                path.display()
+            ))
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "account_acceptance_tests.rs"]
+mod account_acceptance_tests;

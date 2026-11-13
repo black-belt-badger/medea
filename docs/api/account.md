@@ -74,3 +74,36 @@ Offline tests cover full-schema fixtures; all 34 property types; missing/null/pr
 ## Not part of this implementation
 
 This typed-model phase does **not** add strict UUID/date-format string parsing, new CLI options, terminal color, diagnostics, financial explanations or different Unix stream/output modes. Those should follow the planned cross-cutting contract in [Medea #44](https://github.com/black-belt-badger/medea/issues/44) and [Kirke #44](https://github.com/black-belt-badger/kirke/issues/44), after all M3 endpoint audits. Keep the parent account issue open until final acceptance review.
+
+## Offline acceptance examples and failure matrix
+
+These examples describe the **existing**, deliberately small CLI contract. The shared
+Kirke/Medea formatting and diagnostics redesign is reserved for #44 rather than
+adding account-only switches before that decision.
+
+| Invocation or condition | Observable behavior |
+| --- | --- |
+| `medea account --help` | Success, command help on stdout; no credentials required |
+| `medea account` | Authenticated paper-only GET; concise summary on stdout, exit 0 |
+| `medea account --out existing-dir/account.json` | Authenticated paper-only GET; validate full response, then atomically save original response bytes as owner-only JSON (0600 on Unix); success notice, exit 0 |
+| `medea account --status ACTIVE`, `--limit 10`, `--format json` | CLI argument error; no credentials loaded or request issued |
+| Missing/empty API key or secret | Nonzero exit and variable-name-only error on stderr; no account data on stdout |
+| HTTP 401 | Nonzero exit; credential-rejected message without provider body |
+| HTTP 403, 429, 502, 503, 504 | Nonzero exit; sanitized HTTP status without provider body or credentials |
+| Connection failure or 20-second timeout | Nonzero exit; sanitized connection failure |
+| Empty body, null/array, malformed JSON, missing required field, incorrect field type | Nonzero exit, fixed invalid-account-response message; **existing exported file is unchanged** |
+| JSON output destination missing/unwritable | Nonzero exit; no success notice; no account content printed |
+| Unknown response property or future enum value | Typed response remains usable; `--out` preserves original JSON bytes exactly |
+
+Unit tests in `src/account_acceptance_tests.rs` exercise the complete local
+summary/export pathway without networking, including validation-before-write,
+byte-exact preservation, existing-output safety, status independence and private
+file permissions. The CLI and HTTP builder tests independently cover argument
+validation and error classification. Real Alpaca credentials are never needed.
+
+**Refinement boundary:** the current summary intentionally displays account
+number and balances, so stdout must be treated as sensitive. The account UUID
+is omitted from the summary, but included in the explicitly requested private
+JSON export. Alternative redaction modes, terminal colors, machine stdout
+protocols, and shared diagnostics remain decisions for #44; this PR does not
+silently prescribe them.
