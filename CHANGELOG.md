@@ -6,6 +6,10 @@ Versions use [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Added
+- `medea crypto quotes`: historical bid/ask crypto quotes with exact prices/sizes, nanosecond timestamps, typed location/symbol/date controls, 1–20-page bounded pagination and resumable tokens.
+- Streaming JSON/JSONL output, complete provider page envelopes, atomic owner-only exports, rollback on later-page failures, and deterministic offline CLI and API tests.
+
 ### Changed
 - Model `account.status` and optional `account.crypto_status` as the same forward-compatible `AccountStatus` enum; unknown future values survive parsing without changing human summaries or raw provider JSON exports.
 - Decode all 34 documented `GET /v2/account` response fields with strict wire types, including two integer options-level enums. Only `id` and `status` are required; absent/null optional values display as `not provided`, while `--out` still preserves the complete original provider JSON.
