@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use crate::crypto_bars::CryptoBarsArgs;
 use crate::crypto_trades::CryptoTradesArgs;
+use crate::order_filters::{OrderAssetClasses, OrderInstant, OrderSideFilter};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser, PartialEq, Eq)]
@@ -301,6 +302,27 @@ pub struct OrdersArgs {
     /// Write the complete unmodified JSON response to PATH.
     #[arg(long = "out", value_name = "PATH")]
     pub output: Option<PathBuf>,
+    /// Exclusive lower bound on submission time (timezone-qualified RFC3339).
+    #[arg(long, value_name = "RFC3339")]
+    pub after: Option<OrderInstant>,
+    /// Exclusive upper bound on submission time (timezone-qualified RFC3339).
+    #[arg(long, value_name = "RFC3339")]
+    pub until: Option<OrderInstant>,
+    /// Roll multi-leg orders up under their parent order.
+    #[arg(long)]
+    pub nested: bool,
+    /// Only orders for the specified buy or sell side.
+    #[arg(long, value_enum)]
+    pub side: Option<OrderSideFilter>,
+    /// Comma-separated Alpaca asset classes or special value all.
+    #[arg(long = "asset-class", value_name = "CLASSES")]
+    pub asset_classes: Option<OrderAssetClasses>,
+    /// Exclusive server-issued order UUID pagination anchor (not with date bounds).
+    #[arg(long = "before-order-id", value_name = "UUID")]
+    pub before_order_id: Option<OrderId>,
+    /// Exclusive server-issued order UUID pagination anchor (not with date bounds).
+    #[arg(long = "after-order-id", value_name = "UUID")]
+    pub after_order_id: Option<OrderId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -426,6 +448,7 @@ mod tests {
         OrderId, OrderStatus, OrderSymbols, OrdersArgs, OutputArgs,
     };
     use crate::crypto_bars::{BarsFormat, BarsSort, CryptoLocation};
+    use crate::order_filters::{OrderAssetClass, OrderAssetClasses, OrderSideFilter};
     use clap::Parser;
 
     #[test]
@@ -1133,6 +1156,13 @@ mod tests {
                 symbols: None,
                 direction: OrderDirection::Desc,
                 output: None,
+                after: None,
+                until: None,
+                nested: false,
+                side: None,
+                asset_classes: None,
+                before_order_id: None,
+                after_order_id: None,
             })
         );
     }
@@ -1166,6 +1196,13 @@ mod tests {
                 ])),
                 direction: OrderDirection::Asc,
                 output: Some("orders.json".into()),
+                after: None,
+                until: None,
+                nested: false,
+                side: None,
+                asset_classes: None,
+                before_order_id: None,
+                after_order_id: None,
             })
         );
     }
@@ -1182,6 +1219,13 @@ mod tests {
                 symbols: None,
                 direction: OrderDirection::Desc,
                 output: None,
+                after: None,
+                until: None,
+                nested: false,
+                side: None,
+                asset_classes: None,
+                before_order_id: None,
+                after_order_id: None,
             })
         );
     }
@@ -1246,6 +1290,190 @@ mod tests {
             cli.command,
             Command::Orders(OrdersArgs { symbols: Some(OrderSymbols(ref symbols)), .. }) if symbols == &["BRK.B"]
         ));
+    }
+
+    #[test]
+    fn orders_parse_all_documented_non_cursor_filters_together() {
+        let cli = Cli::try_parse_from([
+            "medea",
+            "orders",
+            "--status",
+            "all",
+            "--limit",
+            "500",
+            "--symbols",
+            "BTCUSD, AAPL",
+            "--direction",
+            "asc",
+            "--after",
+            "2026-11-12T00:00:00.123456789Z",
+            "--until",
+            "2026-11-12T04:00:00+01:00",
+            "--nested",
+            "--side",
+            "buy",
+            "--asset-class",
+            "us_equity,crypto",
+            "--out",
+            "orders.json",
+        ])
+        .unwrap();
+
+        let Command::Orders(args) = cli.command else {
+            panic!("Expected orders");
+        };
+        assert_eq!(args.status, OrderStatus::All);
+        assert_eq!(args.limit, Some(500));
+        assert_eq!(
+            args.symbols,
+            Some(OrderSymbols(vec!["BTCUSD".into(), "AAPL".into()]))
+        );
+        assert_eq!(args.direction, OrderDirection::Asc);
+        assert_eq!(args.output, Some("orders.json".into()));
+        assert_eq!(
+            args.after.as_ref().unwrap().as_str(),
+            "2026-11-12T00:00:00.123456789Z"
+        );
+        assert_eq!(
+            args.until.as_ref().unwrap().as_str(),
+            "2026-11-12T04:00:00+01:00"
+        );
+        assert!(args.nested);
+        assert_eq!(args.side, Some(OrderSideFilter::Buy));
+        assert_eq!(
+            args.asset_classes,
+            Some(OrderAssetClasses(vec![
+                OrderAssetClass::Class(AssetClass::UsEquity),
+                OrderAssetClass::Class(AssetClass::Crypto),
+            ]))
+        );
+        assert_eq!(args.before_order_id, None);
+        assert_eq!(args.after_order_id, None);
+        assert_eq!(args.validate(), Ok(()));
+    }
+
+    #[test]
+    fn orders_parse_each_uuid_cursor_separately() {
+        let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+        let before = Cli::try_parse_from(["medea", "orders", "--before-order-id", uuid]).unwrap();
+        let after = Cli::try_parse_from(["medea", "orders", "--after-order-id", uuid]).unwrap();
+
+        let Command::Orders(b) = before.command else {
+            panic!("Expected orders");
+        };
+        let Command::Orders(a) = after.command else {
+            panic!("Expected orders");
+        };
+
+        assert_eq!(b.before_order_id.as_ref().unwrap().as_str(), uuid);
+        assert!(b.after_order_id.is_none());
+        assert!(a.before_order_id.is_none());
+        assert_eq!(a.after_order_id.as_ref().unwrap().as_str(), uuid);
+        assert_eq!(b.validate(), Ok(()));
+        assert_eq!(a.validate(), Ok(()));
+    }
+
+    #[test]
+    fn orders_parse_nested_and_special_all_asset_class() {
+        let cli = Cli::try_parse_from([
+            "medea",
+            "orders",
+            "--nested",
+            "--side",
+            "sell",
+            "--asset-class",
+            "all",
+        ])
+        .unwrap();
+        let Command::Orders(args) = cli.command else {
+            panic!("Expected orders");
+        };
+        assert!(args.nested);
+        assert_eq!(args.side, Some(OrderSideFilter::Sell));
+        assert_eq!(
+            args.asset_classes,
+            Some(OrderAssetClasses(vec![OrderAssetClass::All]))
+        );
+        assert_eq!(args.validate(), Ok(()));
+    }
+
+    #[test]
+    fn orders_reject_invalid_new_flags_before_any_network_work() {
+        for (flag, value) in [
+            ("--after", "yesterday"),
+            ("--after", "2026-11-12"),
+            ("--until", "2026-11-12T12:30:00"),
+            ("--side", "BUY"),
+            ("--side", "both"),
+            ("--asset-class", "crypto,crypto"),
+            ("--asset-class", "all,crypto"),
+            ("--asset-class", "BTCUSD"),
+            ("--before-order-id", "not-a-uuid"),
+            ("--after-order-id", "../positions"),
+        ] {
+            assert!(
+                Cli::try_parse_from(["medea", "orders", flag, value]).is_err(),
+                "{flag} {value}"
+            );
+        }
+        for flag in [
+            "--after",
+            "--until",
+            "--side",
+            "--asset-class",
+            "--before-order-id",
+            "--after-order-id",
+        ] {
+            assert!(
+                Cli::try_parse_from(["medea", "orders", flag]).is_err(),
+                "{flag}"
+            );
+        }
+    }
+
+    #[test]
+    fn orders_validate_conflicting_parameters_parsed_by_clap() {
+        let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+        for args in [
+            vec![
+                "medea",
+                "orders",
+                "--before-order-id",
+                uuid,
+                "--after-order-id",
+                uuid,
+            ],
+            vec![
+                "medea",
+                "orders",
+                "--before-order-id",
+                uuid,
+                "--after",
+                "2026-11-12T01:00:00Z",
+            ],
+            vec![
+                "medea",
+                "orders",
+                "--after-order-id",
+                uuid,
+                "--until",
+                "2026-11-12T01:00:00Z",
+            ],
+            vec![
+                "medea",
+                "orders",
+                "--after",
+                "2026-11-12T02:00:00Z",
+                "--until",
+                "2026-11-12T01:00:00Z",
+            ],
+        ] {
+            let parsed = Cli::try_parse_from(args).unwrap();
+            let Command::Orders(options) = parsed.command else {
+                panic!("Expected orders");
+            };
+            assert!(options.validate().is_err());
+        }
     }
 
     #[test]

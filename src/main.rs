@@ -8,6 +8,7 @@ mod client;
 mod credentials;
 mod crypto_bars;
 mod crypto_trades;
+mod order_filters;
 mod orders;
 mod output;
 mod positions;
@@ -89,6 +90,7 @@ fn run(cli: Cli) -> Result<(), String> {
             Ok(())
         }
         Command::Orders(options) => {
+            options.validate()?;
             let credentials = load_credentials().map_err(|err| err.to_string())?;
             let response = fetch_orders(&credentials, &options).map_err(|err| err.to_string())?;
             // Always validate the provider response, including for --out.

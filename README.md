@@ -191,6 +191,23 @@ medea orders --symbols BTCUSD,ETHUSD,AAPL --limit 50
 - Values are validated before networking. Prices and quantities are preserved as **strings**, never converted to floating point. Nullable fields print `not provided`.
 - An empty response prints `No matching orders.`. This endpoint lists a single page; it does not automatically paginate.
 
+The full GET /v2/orders request contract is supported:
+
+- `--after` and `--until` accept exclusive, timezone-qualified RFC3339 submission-time bounds (with precise fractional seconds). Date-only values are not allowed.
+- `--nested` requests multi-leg orders with their legs under the parent; `--side buy|sell` filters direction.
+- `--asset-class` accepts comma-separated values from all ten documented asset classes (`us_equity`, `us_option`, `crypto`, `crypto_perp`, `treasury`, `corporate`, `global_equity`, `us_index`, `us_equity_chain`, `ipo`) or `all` alone.
+- `--before-order-id UUID` and `--after-order-id UUID` are mutually exclusive server-issued order-ID pagination anchors. Neither can be mixed with date bounds. Incompatible combinations are rejected before credentials or networking.
+
+```sh
+medea orders --status all --limit 10 --nested --side buy --asset-class crypto
+medea orders --status all --asset-class crypto,us_equity \
+  --after 2026-11-01T00:00:00Z --until 2026-11-14T00:00:00Z
+medea orders --status all --limit 10 \
+  --before-order-id 9275f66a-0a1b-4a22-8c55-167416c7cf14
+```
+
+The UUID above is illustrative; obtain a real server-issued `id` from your paper orders. See the [M3 order request API coverage matrix](docs/api/orders.md). The 37-field response and nested legs will be audited in a separate PR.
+
 To save the **complete original JSON response** instead of a terminal summary:
 
 ```sh

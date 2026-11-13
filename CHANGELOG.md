@@ -11,6 +11,7 @@ Versions use [Semantic Versioning](https://semver.org/).
 - Decode all 34 documented `GET /v2/account` response fields with strict wire types, including two integer options-level enums. Only `id` and `status` are required; absent/null optional values display as `not provided`, while `--out` still preserves the complete original provider JSON.
 - Complete `GET /v2/assets` API fidelity: ten asset classes, typed `--exchange` and `--attributes` filters, equity/index restrictions, all 19 documented response fields, forward-compatible enum decoding and exact financial numbers. Preserve the crypto CLI default and private raw JSON exports.
 - Complete `GET /v2/positions` decoding: 22 documented response fields (17 required), nested ten-field USD values for local-currency accounts, shared typed asset class/exchange enums, typed long/short side with unknown-value fallback and exact decimal strings. Preserve current summaries and private original JSON exports.
+- Expand read-only `GET /v2/orders` request fidelity to all 11 documented query filters: typed side and asset classes, exact timezone-qualified submission bounds, nested multi-leg grouping and mutually exclusive order-UUID cursors. Preserve existing safe defaults, output formats, and private JSON; defer complete response decoding to the next phase.
 
 ## [0.2.0] - 2026-11-13
 

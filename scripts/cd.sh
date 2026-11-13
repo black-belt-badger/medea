@@ -28,6 +28,10 @@ cargo build --locked --release --quiet
 ./target/release/medea orders --help > /dev/null
 ./target/release/medea orders --status all --limit 10 > ./output/orders-summary.txt
 ./target/release/medea orders --status all --limit 10 --out ./output/orders.json > ./output/orders-written.txt
+# M3: exercise combined request filters against the read-only paper API.
+./target/release/medea orders --status all --limit 10 --side buy \
+  --asset-class crypto --nested \
+  --out ./output/orders-filtered.json > ./output/orders-filtered-written.txt
 
 test -s ./output/account-summary.txt
 grep -q '^Medea — Alpaca paper account$' ./output/account-summary.txt
@@ -65,6 +69,8 @@ grep -q '^Medea — Alpaca paper orders$' ./output/orders-summary.txt
 jq -e 'type == "array" and (length <= 10) and all(.[]; .id and .client_order_id and .symbol and .status)' ./output/orders.json > /dev/null
 test "$(stat -c '%a' ./output/orders.json)" = 600
 test "$(stat -c '%a' ./output/orders-summary.txt)" = 600
+jq -e 'type == "array" and (length <= 10) and all(.[]; .side == "buy" and .asset_class == "crypto")' ./output/orders-filtered.json > /dev/null
+test "$(stat -c '%a' ./output/orders-filtered.json)" = 600
 
 # A new paper account may have no orders. With an existing order, exercise
 # single-order GET using the validated server-assigned UUID from the list.

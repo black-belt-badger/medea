@@ -168,7 +168,20 @@ fn orders_help_lists_filters_and_output() {
     let result = cli(&["orders", "--help"]);
     assert!(result.status.success());
     let stdout = String::from_utf8_lossy(&result.stdout);
-    for flag in ["--status", "--limit", "--symbols", "--direction", "--out"] {
+    for flag in [
+        "--status",
+        "--limit",
+        "--symbols",
+        "--direction",
+        "--out",
+        "--after",
+        "--until",
+        "--nested",
+        "--side",
+        "--asset-class",
+        "--before-order-id",
+        "--after-order-id",
+    ] {
         assert!(stdout.contains(flag), "Missing {flag}");
     }
 }
@@ -202,6 +215,91 @@ fn invalid_orders_filters_and_missing_values_fail_cli() {
         let result = cli(&args);
         assert!(!result.status.success(), "{args:?}");
         assert!(result.stdout.is_empty(), "{args:?}");
+    }
+}
+
+#[test]
+fn conflicting_order_cursors_and_dates_fail_before_credentials() {
+    let uuid = "9275f66a-0a1b-4a22-8c55-167416c7cf14";
+    for args in [
+        vec![
+            "orders",
+            "--before-order-id",
+            uuid,
+            "--after-order-id",
+            uuid,
+        ],
+        vec![
+            "orders",
+            "--before-order-id",
+            uuid,
+            "--after",
+            "2026-11-12T01:00:00Z",
+        ],
+        vec![
+            "orders",
+            "--before-order-id",
+            uuid,
+            "--until",
+            "2026-11-12T01:00:00Z",
+        ],
+        vec![
+            "orders",
+            "--after-order-id",
+            uuid,
+            "--after",
+            "2026-11-12T01:00:00Z",
+        ],
+        vec![
+            "orders",
+            "--after-order-id",
+            uuid,
+            "--until",
+            "2026-11-12T01:00:00Z",
+        ],
+        vec![
+            "orders",
+            "--after",
+            "2026-11-12T02:00:00Z",
+            "--until",
+            "2026-11-12T01:00:00Z",
+        ],
+    ] {
+        let output = cli(&args);
+        assert!(!output.status.success(), "{args:?}");
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!stderr.contains("Missing environment variable"), "{stderr}");
+        assert!(
+            stderr.contains("combined")
+                || stderr.contains("mutually exclusive")
+                || stderr.contains("later"),
+            "{stderr}"
+        );
+    }
+}
+
+#[test]
+fn malformed_new_orders_parameters_fail_in_cli_before_credentials() {
+    for args in [
+        vec!["orders", "--asset-class", "all,crypto"],
+        vec!["orders", "--asset-class", "crypto,crypto"],
+        vec!["orders", "--asset-class", "CRYPTO"],
+        vec!["orders", "--side", "BUY"],
+        vec!["orders", "--after", "2026-11-12"],
+        vec!["orders", "--until", "2026-11-12T01:00:00"],
+        vec!["orders", "--before-order-id", "not-a-uuid"],
+        vec!["orders", "--after-order-id", "../positions"],
+        vec!["orders", "--asset-class"],
+        vec!["orders", "--before-order-id"],
+    ] {
+        let output = cli(&args);
+        assert!(!output.status.success(), "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("Missing environment variable"),
+            "{args:?}"
+        );
     }
 }
 
