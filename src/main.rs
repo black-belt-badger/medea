@@ -12,6 +12,7 @@ mod crypto_trades;
 mod order_cancel;
 mod order_filters;
 mod order_lookup;
+mod order_submit;
 mod order_types;
 mod orders;
 mod output;
@@ -82,6 +83,9 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::Order {
             command: OrderCommand::Cancel(options),
         } => order_cancel::run_cancel(options),
+        Command::Order {
+            command: OrderCommand::Submit(options),
+        } => order_submit::run_submit(options),
         Command::Order {
             command: OrderCommand::Get(options),
         } => {

@@ -5,6 +5,7 @@ use crate::crypto_bars::CryptoBarsArgs;
 use crate::crypto_quotes::CryptoQuotesArgs;
 use crate::crypto_trades::CryptoTradesArgs;
 use crate::order_filters::{OrderAssetClasses, OrderInstant, OrderSideFilter};
+use crate::order_submit::SubmitOrderArgs;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser, PartialEq, Eq)]
@@ -398,6 +399,8 @@ pub enum OrderCommand {
     Get(OrderGetArgs),
     /// Preview cancellation of one paper order; --confirm is required for DELETE.
     Cancel(OrderCancelArgs),
+    /// Prepare a crypto paper order (dry run unless --confirm).
+    Submit(SubmitOrderArgs),
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]

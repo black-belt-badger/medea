@@ -8,7 +8,7 @@
 
 **Medea** is an unofficial Rust CLI developed alongside [Kirke](https://github.com/black-belt-badger/kirke), its Haskell counterpart. Both aim for the same user-facing Alpaca API behavior while remaining idiomatic in their respective languages.
 
-**Current scope: read-only Alpaca paper account information, open positions, asset discovery, order history/details, and historical crypto bars, trades and quotes from Alpaca Market Data.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
+**Current scope: read-only Alpaca paper account information, open positions, asset discovery, order history/details, and historical crypto bars, trades and quotes from Alpaca Market Data; plus an explicitly confirmed, dry-run-first crypto PAPER-order submission command.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ Medea reads **only** these environment variables:
 - `APCA_API_KEY_ID`
 - `APCA_API_SECRET_KEY`
 
-Authenticated requests use HTTPS to the fixed `https://paper-api.alpaca.markets` host: the read-only `GET /v2/account`, `GET /v2/positions`, `GET /v2/assets`, `GET /v2/orders` and `GET /v2/orders/{order_id}`, plus **only with explicit `--confirm`** a `DELETE /v2/orders/{order_id}` paper-order cancellation. Dry-run cancellation reads no credentials. All requests have a 20-second timeout, forbid redirects and never connect to the live trading endpoint.
+Authenticated HTTPS requests target only the fixed `https://paper-api.alpaca.markets` host: read-only `GET /v2/account`, `GET /v2/positions`, `GET /v2/assets`, `GET /v2/orders` and `GET /v2/orders/{order_id}`; with explicit `--confirm` only, `POST /v2/orders` creates a crypto paper order and `DELETE /v2/orders/{order_id}` requests paper cancellation. Dry runs require no credentials or network access. All requests have a 20-second timeout, forbid redirects and never connect to live trading; POST and DELETE are not automatically retried.
 
 You can set them directly in your shell, or prepare a private file outside the repository:
 
@@ -235,6 +235,27 @@ A successful lookup returns a **JSON object**, not an array, and its server-issu
 
 Like Kirke, this command is **read-only and paper-only**. It does not place, modify or cancel orders. HTTP 404 reports a distinct nonzero order-not-found error; authentication/permission/rate-limit/network and malformed/mismatched-result errors are reported without leaking provider bodies, secrets, or order IDs. See the [M3 Order-by-ID coverage and error matrix](docs/api/order-by-id.md) and the [official endpoint documentation](https://docs.alpaca.markets/us/reference/getorderbyorderid-1).
 
+## Submit a crypto paper order (dry run by default)
+
+**Paper trading only.** `medea order submit` prepares validated crypto market or limit orders. Without `--confirm`, it only prints the complete JSON request: **no credentials are loaded and no network request occurs**.
+
+```sh
+# Preview only — does NOT place an order
+medea order submit --symbol BTC/USD --side buy --type market --qty 0.0001 --client-order-id experiment-btc-001
+
+# Preview a limit order
+medea order submit --symbol BTC/USD --side buy --type limit --qty 0.0001 --limit-price 65000.00 --client-order-id experiment-limit-001
+
+# Explicitly create one PAPER order
+medea order submit --symbol BTC/USD --side buy --type market --qty 0.0001 --client-order-id experiment-btc-001 --confirm
+```
+
+Only `buy|sell`, `market|limit`, `gtc|ioc`, positive exact `--qty` or market-only `--notional`, and limit-only `--limit-price` are supported. A `--client-order-id` is **required** and reused verbatim; it does **not guarantee idempotency**. The command never automatically retries a non-idempotent POST.
+
+On 5xx, a rate limit, a network timeout, or an unexpected success response, the submission result can be **unknown**; inspect existing paper orders before another attempt. An accepted HTTP response does **not** imply a filled order. Use `--confirm --out PATH` to export a verified response as private original JSON. See the [M5 paper-order request/response contract](docs/api/paper-order-submit.md) for constraints and failure handling.
+
+**No live trading, no automatic order submission, and no paper writes in CI or `scripts/cd.sh`.**
+
 ## Cancel a single paper order (explicit opt-in)
 
 **Cancelling an order can change paper account state.** Medea defaults to an entirely offline preview, with no credentials or HTTP activity:
@@ -356,7 +377,7 @@ The logo, illustrations, and source images are documented in [Branding and asset
 
 ## Roadmap, contributions, and safety
 
-Next: historical crypto coverage, account state and carefully controlled paper trading. **Live trading and streaming remain out of scope.** Single-order cancellation exists only on the paper API and always requires explicit `--confirm`; paper submission is tracked separately.
+Next: additional market-data coverage and carefully controlled paper trading. **Live trading, automatic order placement, advanced order types, and streaming remain out of scope.** Creation and single-order cancellation are paper-only and require explicit `--confirm`.
 
 Medea is available under the [BSD 3-Clause License](LICENSE), copyright © 2026 Marek Dudek. See the [GitHub Releases](https://github.com/black-belt-badger/medea/releases) page for source releases and version notes.
 
