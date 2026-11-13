@@ -718,6 +718,22 @@ fn missing_output_path_is_invalid_cli() {
     assert!(String::from_utf8_lossy(&result.stderr).contains("--out"));
 }
 
+#[test]
+fn account_rejects_unpublished_query_filters_before_loading_credentials() {
+    for args in [
+        vec!["account", "--status", "ACTIVE"],
+        vec!["account", "--limit", "10"],
+        vec!["account", "--format", "json"],
+        vec!["account", "--out", "account.json", "--extra"],
+    ] {
+        let result = cli(&args);
+        assert!(!result.status.success(), "{args:?}");
+        assert!(result.stdout.is_empty(), "{args:?}");
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(!stderr.contains("Missing environment variable"), "{args:?}");
+    }
+}
+
 // Offline-only cancellation integration: the helper explicitly removes
 // both Alpaca credential variables, so no test can place a DELETE.
 #[test]
