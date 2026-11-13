@@ -69,3 +69,34 @@ The example UUID is synthetic, not an account-specific value. Use `--after-order
 **Response phase 2 complete:** the typed decoder now covers all 37 published order fields and the 35 nested-leg fields, including forward-compatible enum strings and exact ratios. See [Orders response fidelity](orders-response.md) for the requiredness caveats and cross-language fixture parity. Keep the parent #36 issue open for final acceptance.
 
 Shared CLI colors, diagnostics, Unix pipeline conventions and shell-completion design remain deferred to [Medea #44](https://github.com/black-belt-badger/medea/issues/44) and [Kirke #44](https://github.com/black-belt-badger/kirke/issues/44).
+## Final endpoint acceptance: shared Kirke/Medea behavior
+
+This final M3 endpoint pass keeps the existing observable CLI unchanged.
+The language implementations are idiomatic but use the same six fabricated
+orders from the shared fixture pack: partially-filled equity, notional crypto,
+nested multi-leg options, bracket, trailing stop, and a future enum variant.
+
+| Invocation or condition | Accepted behavior in both clients |
+| --- | --- |
+| `orders --help` | Lists documented query flags; no credentials or network |
+| `orders` | Authenticated paper-only GET with explicit `status=open` and `direction=desc`, provider default limit 50 |
+| `orders --status all --limit 10 --side buy --asset-class crypto,us_equity --nested` | All filters serialized, with `nested=true`; one page only |
+| `orders --after RFC3339 --until RFC3339` | Exact timestamp spelling/offset preserved; incompatible or reversed bounds fail before credentials |
+| `orders --before-order-id UUID` / `--after-order-id UUID` | Exclusive order-ID cursors; neither may be combined with the other cursor or time bounds |
+| Invalid `--limit`, malformed symbols or unsupported/repeated filters | CLI error without network; no silently discarded filters |
+| `[]` returned | Valid empty order list; `No matching orders.` on stdout, or untouched `[]` with `--out` |
+| Nested/partial/crypto/option responses | Human summary includes exact decimal strings and typed legs; raw JSON includes all provider fields |
+| `orders --out existing-dir/orders.json` | Decode *every* order first; atomically replace with original provider bytes and owner-only mode (0600 on Unix) |
+| Malformed body, non-array, wrong-type financial field, invalid second order | Nonzero exit and fixed, sanitized invalid-response diagnostic; no partial stdout/export and existing destination unchanged |
+| Missing credentials, HTTP 401/403/429/5xx or connection failure | Nonzero exit and sanitized message without provider response body or secrets |
+| Unwritable output path | Nonzero exit; no success notice or leaked order data |
+
+The acceptance tests deliberately exercise the **actual command presentation
+and private-export boundary** rather than just the JSON decoder. They reuse
+the identical `orders-mixed.json` fixture in both repositories and verify
+byte-for-byte preservation, validation before output, lossless unknown-field
+handling and private file replacement without live Alpaca credentials.
+
+**Scope:** no new auto-pagination or output flags, no trades, and no new
+order-write operations. Shared colors, redaction policy, shell completion
+and Unix output conventions remain reserved for issue #44.
