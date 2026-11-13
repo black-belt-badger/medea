@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use reqwest::StatusCode;
 use reqwest::blocking::{Client, Request};
-use reqwest::header::HeaderValue;
+use reqwest::header::{CONTENT_TYPE, HeaderValue};
 use reqwest::redirect::Policy;
 
 use crate::cli::{AssetsArgs, OrderCancelArgs, OrderGetArgs, OrdersArgs};
@@ -11,6 +11,7 @@ use crate::credentials::Credentials;
 use crate::crypto_bars::{BarsInstant, BarsSort, CryptoBarsArgs, CryptoLocation, CryptoSymbols};
 use crate::crypto_quotes::CryptoQuotesArgs;
 use crate::crypto_trades::CryptoTradesArgs;
+use crate::order_submit::PreparedOrder;
 
 const PAPER_ACCOUNT_URL: &str = "https://paper-api.alpaca.markets/v2/account";
 const PAPER_POSITIONS_URL: &str = "https://paper-api.alpaca.markets/v2/positions";
@@ -329,6 +330,26 @@ fn interpret_cancel_status(status: StatusCode) -> Result<(), ClientError> {
     }
 }
 
+// This is the ONLY create-order HTTP builder: POST to a fixed paper endpoint.
+fn submit_order_request(
+    client: &Client,
+    credentials: &Credentials,
+    prepared: &PreparedOrder<'_>,
+) -> Result<Request, ClientError> {
+    if !prepared.confirmed() {
+        return Err(ClientError::ConfirmationRequired);
+    }
+    let mut request = authenticated_request(client, credentials, PAPER_ORDERS_URL)?;
+    *request.method_mut() = reqwest::Method::POST;
+    request
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    *request.body_mut() = Some(reqwest::blocking::Body::from(
+        prepared.body().map_err(|_| ClientError::ConnectionFailed)?,
+    ));
+    Ok(request)
+}
+
 // One authenticated request builder, with identical safeguards for all paper endpoints.
 fn authenticated_request(
     client: &Client,
@@ -408,6 +429,16 @@ fn order_error(err: ClientError) -> ClientError {
         ClientError::UnexpectedStatus(404) => ClientError::OrderNotFound,
         other => other,
     }
+}
+
+/// One authenticated POST, with no automatic retry or redirect.
+pub fn fetch_submit_order(
+    credentials: &Credentials,
+    prepared: &PreparedOrder<'_>,
+) -> Result<Vec<u8>, ClientError> {
+    fetch_authenticated(credentials, |client, credentials| {
+        submit_order_request(client, credentials, prepared)
+    })
 }
 
 pub fn fetch_order(
@@ -1169,5 +1200,111 @@ mod tests {
                 .to_string()
                 .contains("secret")
         );
+    }
+}
+
+#[cfg(test)]
+mod submit_request_tests {
+    use super::{account_request, authenticated_client, check_status, submit_order_request};
+    use crate::credentials::Credentials;
+    use crate::order_submit::{
+        ClientOrderId, SubmitAmount, SubmitKind, SubmitOrderArgs, SubmitSide, SubmitSymbol,
+        SubmitTimeInForce,
+    };
+    use reqwest::{Method, StatusCode, header::CONTENT_TYPE};
+    use serde_json::{Value, json};
+
+    #[test]
+    fn creates_only_a_paper_https_post_with_exact_json_and_protected_headers() {
+        let client = authenticated_client().unwrap();
+        let credentials = Credentials {
+            key_id: "synthetic-key".into(),
+            secret_key: "synthetic-secret".into(),
+        };
+        let options = SubmitOrderArgs {
+            symbol: "BTC/USD".parse::<SubmitSymbol>().unwrap(),
+            side: SubmitSide::Buy,
+            kind: SubmitKind::Market,
+            time_in_force: SubmitTimeInForce::Gtc,
+            qty: Some("0.000000001".parse::<SubmitAmount>().unwrap()),
+            notional: None,
+            limit_price: None,
+            client_order_id: "stable-order-001".parse::<ClientOrderId>().unwrap(),
+            confirm: true,
+            output: None,
+        };
+        let prepared = options.prepare().unwrap();
+        let request = submit_order_request(&client, &credentials, &prepared).unwrap();
+        let account = account_request(&client, &credentials).unwrap();
+
+        assert_eq!(request.method(), Method::POST);
+        assert_eq!(request.url().scheme(), "https");
+        assert_eq!(request.url().host_str(), Some("paper-api.alpaca.markets"));
+        assert_eq!(request.url().port_or_known_default(), Some(443));
+        assert_eq!(request.url().path(), "/v2/orders");
+        assert_eq!(request.url().query(), None);
+        assert_eq!(
+            request.headers().get(CONTENT_TYPE).unwrap(),
+            "application/json"
+        );
+        for key in ["APCA-API-KEY-ID", "APCA-API-SECRET-KEY"] {
+            assert_eq!(request.headers().get(key), account.headers().get(key));
+        }
+
+        let bytes = request
+            .body()
+            .and_then(reqwest::blocking::Body::as_bytes)
+            .unwrap();
+        let body: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(
+            body,
+            json!({
+                "symbol": "BTC/USD",
+                "side": "buy",
+                "type": "market",
+                "time_in_force": "gtc",
+                "qty": "0.000000001",
+                "client_order_id": "stable-order-001"
+            })
+        );
+        let text = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(!text.contains("synthetic-secret"));
+        assert!(!text.contains("synthetic-key"));
+    }
+
+    #[test]
+    fn low_level_submit_builder_rejects_unconfirmed_requests() {
+        let client = authenticated_client().unwrap();
+        let credentials = Credentials {
+            key_id: "synthetic-key".into(),
+            secret_key: "synthetic-secret".into(),
+        };
+        let options = SubmitOrderArgs {
+            symbol: "BTC/USD".parse().unwrap(),
+            side: SubmitSide::Buy,
+            kind: SubmitKind::Market,
+            time_in_force: SubmitTimeInForce::Gtc,
+            qty: Some("0.1".parse().unwrap()),
+            notional: None,
+            limit_price: None,
+            client_order_id: "stable-preview-001".parse().unwrap(),
+            confirm: false,
+            output: None,
+        };
+        let prepared = options.prepare().unwrap();
+        assert!(!prepared.confirmed());
+        assert_eq!(
+            submit_order_request(&client, &credentials, &prepared).unwrap_err(),
+            super::ClientError::ConfirmationRequired
+        );
+    }
+
+    #[test]
+    fn accepts_created_status_and_rejects_provider_errors_without_the_body() {
+        assert!(check_status(StatusCode::CREATED).is_ok());
+        assert!(check_status(StatusCode::OK).is_ok());
+        assert!(check_status(StatusCode::UNPROCESSABLE_ENTITY).is_err());
+        assert!(check_status(StatusCode::TOO_MANY_REQUESTS).is_err());
+        assert!(check_status(StatusCode::INTERNAL_SERVER_ERROR).is_err());
     }
 }

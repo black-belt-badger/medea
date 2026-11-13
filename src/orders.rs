@@ -46,7 +46,7 @@ pub struct OrderDetails {
 pub struct Order {
     #[serde(deserialize_with = "nonblank_order_id")]
     pub(crate) id: String,
-    client_order_id: Option<String>,
+    pub(crate) client_order_id: Option<String>,
     symbol: Option<String>,
     asset_class: Option<String>,
     pub(crate) side: Option<OrderSide>,
