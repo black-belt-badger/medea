@@ -7,6 +7,8 @@ Versions use [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Added
+- `medea crypto bars` retrieves historical crypto OHLCV from Alpaca Market Data with typed, validated timeframes, locations, date bounds, sort and bounded next-token pagination.
+- Exact decimal-number decoding and nanosecond timestamp strings, complete JSON page-envelope export, JSONL records, private output, offline tests and a real market-data integration check.
 - `medea order get ORDER_ID` retrieves an individual paper order by validated UUID, with optional `--nested` and private `--out PATH` for full provider JSON.
 - Reuses the existing typed order decoder and summary fields; separate HTTP 404 handling, offline tests and a paper API integration check.
 - `medea orders` lists read-only paper orders with typed status, limit, symbols and direction filters; financial values retain exact decimal strings.

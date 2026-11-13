@@ -2,13 +2,13 @@
   <img src="docs/fancy.webp" alt="Medea — crucible knot logo and wordmark" width="760">
 </p>
 
-# Medea — Rust CLI for Alpaca's paper Trading API
+# Medea — Rust CLI for Alpaca's Trading and Crypto Market Data APIs
 
 [![Rust CI](https://github.com/black-belt-badger/medea/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/black-belt-badger/medea/actions/workflows/rust-ci.yml)
 
 **Medea** is an unofficial Rust CLI developed alongside [Kirke](https://github.com/black-belt-badger/kirke), its Haskell counterpart. Both aim for the same user-facing Alpaca API behavior while remaining idiomatic in their respective languages.
 
-**Current scope: read-only Alpaca paper account information, open positions, asset discovery, and order history/details.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
+**Current scope: read-only Alpaca paper account information, open positions, asset discovery, order history/details, and historical crypto bars from Alpaca Market Data.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ cargo build --locked --release
 
 GitHub Actions runs the same checks on pull requests and `main` pushes but does not install the CLI globally. The local script does not run the credential-dependent paper API test; use `scripts/it.sh` explicitly for that.
 
-## Paper credentials
+## API credentials (paper trading and crypto market data)
 
 Medea reads **only** these environment variables:
 
@@ -204,9 +204,36 @@ A successful lookup returns a **JSON object**, not an array. The readable view r
 
 Like Kirke, this command is **read-only and paper-only**. It does not place, modify or cancel orders. Official documentation: [GET /v2/orders/{order_id}](https://docs.alpaca.markets/us/reference/getorderbyorderid-1).
 
-## Paper integration check (maintainers)
+## Historical crypto bars (Alpaca Market Data)
 
-The explicit script `scripts/it.sh` runs the real **paper-only** account, positions, assets, order-listing, and single-order commands, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
+Historical bars use **`https://data.alpaca.markets/v1beta3/crypto/{loc}/bars`**, authenticated with the same API-key variables. This is a **read-only market-data endpoint**, separate from paper trading. The command never submits orders.
+
+```sh
+medea crypto bars \
+  --symbols BTC/USD,ETH/USD,SOL/USD --timeframe 1Hour \
+  --start 2026-10-02T00:00:00Z --end 2026-10-03T00:00:00Z
+
+medea crypto bars \
+  --symbols BTC/USD,ETH/USD --timeframe 5Min \
+  --start 2026-10-02 --end 2026-10-03 \
+  --limit 100 --max-pages 3 --sort asc --out output/crypto-bars.json
+
+medea crypto bars \
+  --symbols SOL/USD --timeframe 1Min --limit 100 --max-pages 2 \
+  --format jsonl --out output/sol-bars.jsonl
+```
+
+**Required:** `--symbols` accepts 1–30 comma-separated pairs in the form `BTC/USD` (unlike order filtering, which uses `BTCUSD`). `--timeframe` supports 1–59 minutes, 1–23 hours, 1 day, 1 week, and 1/2/3/4/6/12 months, including Alpaca's short aliases. Optional settings: `--location us|us-1|us-2|eu-1|bs-1` (default `us`), inclusive `--start`/`--end` (YYYY-MM-DD or timezone-qualified RFC3339), `--limit 1..10000` (default 1000 **across all symbols**), `--sort asc|desc` (default `asc`), `--page-token` to resume, and `--max-pages 1..20` (default **1**). Alpaca can return less than the page limit while more pages remain, so inspect the `next_page_token`. See [Alpaca's historical bars reference](https://docs.alpaca.markets/us/reference/cryptobars-1).
+
+**Output contract:** Without `--out`, default `--format json` prints a short per-symbol summary and whether more pages remain. With `--out PATH`, it writes `{"pages":[API_PAGE_1,API_PAGE_2,...],"next_page_token":...}`, retaining complete provider pages and unknown fields. A non-null final token permits a subsequent request with `--page-token`. With `--format jsonl`, stdout or `--out PATH` contains one JSON record per bar with `symbol`, `t`, `o`, `h`, `l`, `c`, `v`, `n`, and `vw`. JSONL does not retain a continuation token; select JSON export if resumption matters.
+
+Rust uses **`serde_json::Number` with arbitrary precision** for the numeric OHLCV/VWAP fields, never binary floating point. Fractional nanosecond timestamps are kept verbatim. Number formatting may be normalized (for example, scientific notation), but the **numeric value is not rounded**. JSON page envelopes preserve extra upstream fields, while JSONL contains the known bar fields. Requests are capped at 20 pages of up to 10,000 bars each; memory use is explicitly bounded, without a bulk-backfill planner. A repeated page token or malformed response aborts without writing a partial file. Exports are private and atomically replaced, normally `0600` on Unix; their parent directory must exist.
+
+This is a data-access CLI, not a dataset inventory or backfill planner (those belong to Metis/Ariadne). No live-trading or state-changing operations are performed.
+
+## Integration check (maintainers)
+
+The explicit script `scripts/it.sh` runs the real **paper-only** account, positions, assets, and order commands, plus a bounded historical crypto-bars request, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
 
 On a trusted Linux machine with `jq`, `stat`, and paper credentials:
 
@@ -224,7 +251,7 @@ Do not paste the script's private outputs into CI, an issue, or a release.
 
 ## Roadmap, contributions, and safety
 
-Next: account state, historical crypto market data, and carefully controlled paper trading. **Live trading, order submission/cancellation, streaming, and market-data commands are not part of this version.**
+Next: historical crypto trades and quotes, account state, and carefully controlled paper trading. **Live trading, order submission/cancellation, and streaming are not part of this version.**
 
 Medea is available under the [BSD 3-Clause License](LICENSE), copyright © 2026 Marek Dudek. See the [GitHub Releases](https://github.com/black-belt-badger/medea/releases) page for source releases and version notes.
 
