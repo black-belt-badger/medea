@@ -92,17 +92,7 @@ fn run(cli: Cli) -> Result<(), String> {
             options.validate()?;
             let credentials = load_credentials().map_err(|err| err.to_string())?;
             let response = fetch_orders(&credentials, &options).map_err(|err| err.to_string())?;
-            // Always validate the provider response, including for --out.
-            let orders = decode_orders(&response)
-                .map_err(|_| "Invalid Alpaca orders response.".to_owned())?;
-            match options.output {
-                None => print!("{}", render_orders_summary(&orders)),
-                Some(path) => {
-                    save_private_json(&path, &response)
-                        .map_err(|err| format!("Could not save orders JSON: {err}"))?;
-                    println!("Saved complete orders JSON to {}", path.display());
-                }
-            }
+            print!("{}", present_orders(&response, options.output.as_deref())?);
             Ok(())
         }
         Command::Assets(options) => {
@@ -180,3 +170,25 @@ mod assets_acceptance_tests;
 #[cfg(test)]
 #[path = "positions_acceptance_tests.rs"]
 mod positions_acceptance_tests;
+
+// Validate the complete array before any user-visible output or file export.
+// Keep the original provider bytes for lossless explicit JSON exports.
+fn present_orders(response: &[u8], output: Option<&Path>) -> Result<String, String> {
+    let orders =
+        decode_orders(response).map_err(|_| "Invalid Alpaca orders response.".to_owned())?;
+    match output {
+        None => Ok(render_orders_summary(&orders)),
+        Some(path) => {
+            save_private_json(path, response)
+                .map_err(|err| format!("Could not save orders JSON: {err}"))?;
+            Ok(format!(
+                "Saved complete orders JSON to {}\n",
+                path.display()
+            ))
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "orders_acceptance_tests.rs"]
+mod orders_acceptance_tests;
