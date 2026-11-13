@@ -405,6 +405,134 @@ fn reverse_crypto_time_range_fails_before_loading_credentials() {
 }
 
 #[test]
+fn crypto_trades_help_shows_all_supported_flags_without_timeframe() {
+    let parent = cli(&["crypto", "--help"]);
+    assert!(parent.status.success());
+    assert!(String::from_utf8_lossy(&parent.stdout).contains("trades"));
+    let result = cli(&["crypto", "trades", "--help"]);
+    assert!(result.status.success());
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    for flag in [
+        "--symbols",
+        "--location",
+        "--start",
+        "--end",
+        "--limit",
+        "--sort",
+        "--max-pages",
+        "--page-token",
+        "--format",
+        "--out",
+    ] {
+        assert!(stdout.contains(flag), "missing {flag}");
+    }
+    assert!(!stdout.contains("--timeframe"));
+}
+
+#[test]
+fn crypto_trades_missing_credentials_reported_without_leaking() {
+    let result = cli(&["crypto", "trades", "--symbols", "BTC/USD"]);
+    assert!(!result.status.success());
+    assert!(
+        String::from_utf8_lossy(&result.stderr)
+            .contains("Missing environment variable: APCA_API_KEY_ID")
+    );
+    assert!(result.stdout.is_empty());
+}
+
+#[test]
+fn crypto_trades_invalid_arguments_fail_before_loading_credentials() {
+    for args in [
+        vec!["crypto", "trades"],
+        vec!["crypto", "trades", "--symbols", "BTCUSD"],
+        vec![
+            "crypto",
+            "trades",
+            "--symbols",
+            "BTC/USD",
+            "--timeframe",
+            "1Min",
+        ],
+        vec!["crypto", "trades", "--symbols", "BTC/USD", "--limit", "0"],
+        vec![
+            "crypto",
+            "trades",
+            "--symbols",
+            "BTC/USD",
+            "--limit",
+            "10001",
+        ],
+        vec![
+            "crypto",
+            "trades",
+            "--symbols",
+            "BTC/USD",
+            "--max-pages",
+            "21",
+        ],
+        vec![
+            "crypto",
+            "trades",
+            "--symbols",
+            "BTC/USD",
+            "--location",
+            "hostile",
+        ],
+        vec!["crypto", "trades", "--symbols", "BTC/USD,,ETH/USD"],
+        vec![
+            "crypto",
+            "trades",
+            "--symbols",
+            "BTC/USD",
+            "--start",
+            "yesterday",
+        ],
+        vec![
+            "crypto",
+            "trades",
+            "--symbols",
+            "BTC/USD",
+            "--format",
+            "csv",
+        ],
+        vec![
+            "crypto",
+            "trades",
+            "--symbols",
+            "BTC/USD",
+            "--page-token",
+            "",
+        ],
+        vec!["crypto", "trades", "--symbols", "BTC/USD", "--out"],
+    ] {
+        let result = cli(&args);
+        assert!(!result.status.success(), "{args:?}");
+        assert!(result.stdout.is_empty());
+        assert!(!String::from_utf8_lossy(&result.stderr).contains("APCA_API_KEY_ID"));
+    }
+}
+
+#[test]
+fn crypto_trades_reversed_range_is_rejected_before_loading_credentials() {
+    let result = cli(&[
+        "crypto",
+        "trades",
+        "--symbols",
+        "BTC/USD",
+        "--start",
+        "2026-10-04",
+        "--end",
+        "2026-10-02",
+    ]);
+    assert!(!result.status.success());
+    assert!(
+        String::from_utf8_lossy(&result.stderr).contains("--start must not be later than --end")
+    );
+    assert!(!String::from_utf8_lossy(&result.stderr).contains("APCA_API_KEY_ID"));
+    assert!(result.stdout.is_empty());
+}
+
+#[test]
 fn account_help_lists_output_option() {
     let result = cli(&["account", "--help"]);
     assert!(result.status.success());

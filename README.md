@@ -8,7 +8,7 @@
 
 **Medea** is an unofficial Rust CLI developed alongside [Kirke](https://github.com/black-belt-badger/kirke), its Haskell counterpart. Both aim for the same user-facing Alpaca API behavior while remaining idiomatic in their respective languages.
 
-**Current scope: read-only Alpaca paper account information, open positions, asset discovery, order history/details, and historical crypto bars from Alpaca Market Data.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
+**Current scope: read-only Alpaca paper account information, open positions, asset discovery, order history/details, and historical crypto bars and trades from Alpaca Market Data.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
 
 ## Requirements
 
@@ -231,9 +231,37 @@ Rust uses **`serde_json::Number` with arbitrary precision** for the numeric OHLC
 
 This is a data-access CLI, not a dataset inventory or backfill planner (those belong to Metis/Ariadne). No live-trading or state-changing operations are performed.
 
+## Historical crypto trades (Alpaca Market Data)
+
+Individual executions are fetched using **`GET https://data.alpaca.markets/v1beta3/crypto/{loc}/trades`**. It uses the same authenticated, read-only HTTPS market-data client as bars. **Trades do not have a `--timeframe` argument.**
+
+```sh
+medea crypto trades \
+  --symbols BTC/USD,ETH/USD,SOL/USD \
+  --start 2026-10-02T00:00:00Z --end 2026-10-03T00:00:00Z
+
+medea crypto trades \
+  --symbols BTC/USD,ETH/USD --location us --limit 100 \
+  --max-pages 3 --sort asc --out output/crypto-trades.json
+
+medea crypto trades \
+  --symbols BTC/USD --limit 1000 --max-pages 2 \
+  --format jsonl --out output/btc-trades.jsonl
+```
+
+**Filters:** `--symbols` (required, 1–30 comma-separated pairs such as `BTC/USD`), `--location us|us-1|us-2|eu-1|bs-1` (default `us`), inclusive `--start`/`--end` (YYYY-MM-DD or timezone-qualified RFC3339), `--limit 1..10000` (default 1000 **across all symbols**), `--sort asc|desc` (default `asc`), `--max-pages 1..20` (default **1**), and optional `--page-token` to continue from a previous JSON export. A short result page does not imply completion: inspect `next_page_token`. See [Alpaca historical trades reference](https://docs.alpaca.markets/us/reference/cryptotrades-1).
+
+**Output:** Without `--out`, the default `--format json` prints page and per-symbol trade counts and indicates if more pages remain. With `--out PATH`, it writes `{"pages":[API_PAGE_1,API_PAGE_2,...],"next_page_token":...}`: complete, original upstream JSON page objects and the last continuation token. Resume by passing `--page-token`. With `--format jsonl`, stdout or `--out PATH` contains a record per trade with `symbol`, `i` (integer ID), `p` (price), `s` (size), `t` (timestamp), `tks` (taker side or null). JSONL does **not** retain the continuation token; use JSON for resumption.
+
+Rust stores trade IDs as arbitrary-precision integer JSON numbers and uses **`serde_json::Number` with `arbitrary_precision`** for price and size, without binary floating-point rounding. Timestamp strings retain their nanosecond precision, and absent/null taker sides are supported. Complete upstream JSON pages retain additional provider fields, though whitespace and numeric spelling may be normalized when reserialized.
+
+**Memory and safety:** Each page is decoded and written before the next one is fetched; the whole trade history is **not retained in memory**. A private temporary file in the destination directory is atomically renamed only on success (mode normally `0600`), preserving any existing destination after HTTP, decoding or output failures. JSONL sent to **stdout** may have printed earlier records before a later request fails; use `--out` for reliable all-or-nothing files. The parent directory must already exist. Bounded pagination rejects repeated tokens instead of looping indefinitely.
+
+This is bounded historical data access, not inventory or backfill planning (those belong to Metis/Ariadne). No orders are submitted, cancelled or modified.
+
 ## Integration check (maintainers)
 
-The explicit script `scripts/it.sh` runs the real **paper-only** account, positions, assets, and order commands, plus a bounded historical crypto-bars request, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
+The explicit script `scripts/it.sh` runs the real **paper-only** account, positions, assets, and order commands, plus bounded historical crypto-bars and crypto-trades requests, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
 
 On a trusted Linux machine with `jq`, `stat`, and paper credentials:
 
@@ -251,7 +279,7 @@ Do not paste the script's private outputs into CI, an issue, or a release.
 
 ## Roadmap, contributions, and safety
 
-Next: historical crypto trades and quotes, account state, and carefully controlled paper trading. **Live trading, order submission/cancellation, and streaming are not part of this version.**
+Next: historical crypto quotes, account state, and carefully controlled paper trading. **Live trading, order submission/cancellation, and streaming are not part of this version.**
 
 Medea is available under the [BSD 3-Clause License](LICENSE), copyright © 2026 Marek Dudek. See the [GitHub Releases](https://github.com/black-belt-badger/medea/releases) page for source releases and version notes.
 

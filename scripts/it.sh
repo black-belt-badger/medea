@@ -84,4 +84,20 @@ test "$(stat -c '%a' ./output/crypto-bars.jsonl)" = 600
 test -s ./output/crypto-bars.jsonl
 jq -e -c '.symbol and .t and (.o | type == "number") and (.v | type == "number")' ./output/crypto-bars.jsonl > /dev/null
 
+# Individual historical trades, two symbols, at most two pages of two trades.
+./target/release/medea crypto trades --help > /dev/null
+trades_flags=(--symbols BTC/USD,ETH/USD \
+  --start 2026-10-02T00:00:00Z --end 2026-10-02T03:00:00Z \
+  --limit 2 --max-pages 2)
+./target/release/medea crypto trades "${trades_flags[@]}" > ./output/crypto-trades-summary.txt
+./target/release/medea crypto trades "${trades_flags[@]}" --out ./output/crypto-trades.json > ./output/crypto-trades-written.txt
+./target/release/medea crypto trades "${trades_flags[@]}" --format jsonl --out ./output/crypto-trades.jsonl > ./output/crypto-trades-jsonl-written.txt
+grep -q '^Medea — Alpaca historical crypto trades$' ./output/crypto-trades-summary.txt
+jq -e '(.pages | type == "array" and length >= 1 and length <= 2) and (.next_page_token == null or (.next_page_token | type == "string"))' ./output/crypto-trades.json > /dev/null
+jq -e 'all(.pages[]; (.trades | type == "object"))' ./output/crypto-trades.json > /dev/null
+test "$(stat -c '%a' ./output/crypto-trades.json)" = 600
+test "$(stat -c '%a' ./output/crypto-trades.jsonl)" = 600
+test -s ./output/crypto-trades.jsonl
+jq -e -c '.symbol and .i and .t and (.p | type == "number") and (.s | type == "number")' ./output/crypto-trades.jsonl > /dev/null
+
 echo "Medea: Alpaca paper and crypto market-data API integration checks passed"

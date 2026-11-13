@@ -8,7 +8,8 @@ use reqwest::redirect::Policy;
 
 use crate::cli::{AssetClass, AssetStatus, OrderGetArgs, OrdersArgs};
 use crate::credentials::Credentials;
-use crate::crypto_bars::CryptoBarsArgs;
+use crate::crypto_bars::{BarsInstant, BarsSort, CryptoBarsArgs, CryptoLocation, CryptoSymbols};
+use crate::crypto_trades::CryptoTradesArgs;
 
 const PAPER_ACCOUNT_URL: &str = "https://paper-api.alpaca.markets/v2/account";
 const PAPER_POSITIONS_URL: &str = "https://paper-api.alpaca.markets/v2/positions";
@@ -16,7 +17,7 @@ const PAPER_ASSETS_URL: &str = "https://paper-api.alpaca.markets/v2/assets";
 const PAPER_ORDERS_URL: &str = "https://paper-api.alpaca.markets/v2/orders";
 const CRYPTO_DATA_ROOT: &str = "https://data.alpaca.markets/v1beta3/crypto/";
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClientError {
     InvalidCredentials,
     ConnectionFailed,
@@ -97,27 +98,106 @@ fn orders_request(
     Ok(request)
 }
 
+#[derive(Clone, Copy)]
+enum CryptoDataKind {
+    Bars,
+    Trades,
+}
+
+impl CryptoDataKind {
+    fn segment(self) -> &'static str {
+        match self {
+            Self::Bars => "bars",
+            Self::Trades => "trades",
+        }
+    }
+}
+
+struct CryptoDataQuery<'a> {
+    kind: CryptoDataKind,
+    symbols: &'a CryptoSymbols,
+    location: CryptoLocation,
+    timeframe: Option<&'a str>,
+    start: Option<&'a BarsInstant>,
+    end: Option<&'a BarsInstant>,
+    limit: u16,
+    sort: BarsSort,
+    page_token: Option<&'a str>,
+}
+
 fn crypto_bars_request(
     client: &Client,
     credentials: &Credentials,
     options: &CryptoBarsArgs,
     token: Option<&str>,
 ) -> Result<Request, ClientError> {
-    let endpoint = format!("{CRYPTO_DATA_ROOT}{}/bars", options.location.as_path());
+    crypto_data_request(
+        client,
+        credentials,
+        CryptoDataQuery {
+            kind: CryptoDataKind::Bars,
+            symbols: &options.symbols,
+            location: options.location,
+            timeframe: Some(options.timeframe.as_str()),
+            start: options.start.as_ref(),
+            end: options.end.as_ref(),
+            limit: options.limit,
+            sort: options.sort,
+            page_token: token,
+        },
+    )
+}
+
+fn crypto_trades_request(
+    client: &Client,
+    credentials: &Credentials,
+    options: &CryptoTradesArgs,
+    token: Option<&str>,
+) -> Result<Request, ClientError> {
+    crypto_data_request(
+        client,
+        credentials,
+        CryptoDataQuery {
+            kind: CryptoDataKind::Trades,
+            symbols: &options.symbols,
+            location: options.location,
+            timeframe: None,
+            start: options.start.as_ref(),
+            end: options.end.as_ref(),
+            limit: options.limit,
+            sort: options.sort,
+            page_token: token,
+        },
+    )
+}
+
+// Shared authenticated read-only market-data builder: endpoint is an enum,
+// locations are typed, and URL query pairs are encoded by reqwest.
+fn crypto_data_request(
+    client: &Client,
+    credentials: &Credentials,
+    options: CryptoDataQuery<'_>,
+) -> Result<Request, ClientError> {
+    let endpoint = format!(
+        "{CRYPTO_DATA_ROOT}{}/{}",
+        options.location.as_path(),
+        options.kind.segment()
+    );
     let mut request = authenticated_request(client, credentials, &endpoint)?;
-    // URL's query builder escapes slashes, commas, timestamps and opaque tokens.
     let mut query = request.url_mut().query_pairs_mut();
     query.append_pair("symbols", &options.symbols.0.join(","));
-    query.append_pair("timeframe", options.timeframe.as_str());
-    if let Some(start) = &options.start {
+    if let Some(timeframe) = options.timeframe {
+        query.append_pair("timeframe", timeframe);
+    }
+    if let Some(start) = options.start {
         query.append_pair("start", start.as_str());
     }
-    if let Some(end) = &options.end {
+    if let Some(end) = options.end {
         query.append_pair("end", end.as_str());
     }
     query.append_pair("limit", &options.limit.to_string());
     query.append_pair("sort", options.sort.as_query());
-    if let Some(token) = token {
+    if let Some(token) = options.page_token {
         query.append_pair("page_token", token);
     }
     drop(query);
@@ -169,6 +249,16 @@ pub fn fetch_crypto_bars_page(
 ) -> Result<Vec<u8>, ClientError> {
     fetch_authenticated(credentials, |client, credentials| {
         crypto_bars_request(client, credentials, options, token)
+    })
+}
+
+pub fn fetch_crypto_trades_page(
+    credentials: &Credentials,
+    options: &CryptoTradesArgs,
+    token: Option<&str>,
+) -> Result<Vec<u8>, ClientError> {
+    fetch_authenticated(credentials, |client, credentials| {
+        crypto_trades_request(client, credentials, options, token)
     })
 }
 
@@ -245,7 +335,8 @@ fn check_status(status: StatusCode) -> Result<(), ClientError> {
 mod tests {
     use super::{
         ClientError, account_request, assets_request, authenticated_client, check_status,
-        crypto_bars_request, order_error, order_request, orders_request, positions_request,
+        crypto_bars_request, crypto_trades_request, order_error, order_request, orders_request,
+        positions_request,
     };
     use crate::cli::{
         AssetClass, AssetStatus, OrderDirection, OrderGetArgs, OrderStatus, OrderSymbols,
@@ -253,6 +344,7 @@ mod tests {
     };
     use crate::credentials::Credentials;
     use crate::crypto_bars::{BarsFormat, BarsSort, CryptoBarsArgs, CryptoLocation};
+    use crate::crypto_trades::CryptoTradesArgs;
     use reqwest::{Method, StatusCode};
 
     fn sample_bars_args() -> CryptoBarsArgs {
@@ -269,6 +361,69 @@ mod tests {
             format: BarsFormat::Json,
             output: None,
         }
+    }
+
+    fn sample_trades_args() -> CryptoTradesArgs {
+        CryptoTradesArgs {
+            symbols: "BTC/USD,ETH/USD".parse().unwrap(),
+            location: CryptoLocation::Us,
+            start: Some("2026-10-02T00:00:00.123456789Z".parse().unwrap()),
+            end: Some("2026-10-02T02:00:00Z".parse().unwrap()),
+            limit: 25,
+            sort: BarsSort::Asc,
+            max_pages: 2,
+            page_token: None,
+            format: BarsFormat::Json,
+            output: None,
+        }
+    }
+
+    #[test]
+    fn crypto_trade_request_uses_authenticated_market_data_endpoint_without_timeframe() {
+        let client = authenticated_client().unwrap();
+        let credentials = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let trades =
+            crypto_trades_request(&client, &credentials, &sample_trades_args(), None).unwrap();
+        let account = account_request(&client, &credentials).unwrap();
+        assert_eq!(trades.method(), Method::GET);
+        assert_eq!(trades.url().scheme(), "https");
+        assert_eq!(trades.url().host_str(), Some("data.alpaca.markets"));
+        assert_eq!(trades.url().port_or_known_default(), Some(443));
+        assert_eq!(trades.url().path(), "/v1beta3/crypto/us/trades");
+        assert_eq!(trades.headers(), account.headers());
+        assert_eq!(
+            trades.url().query(),
+            Some(
+                "symbols=BTC%2FUSD%2CETH%2FUSD&start=2026-10-02T00%3A00%3A00.123456789Z&end=2026-10-02T02%3A00%3A00Z&limit=25&sort=asc"
+            )
+        );
+        assert!(!trades.url().query().unwrap().contains("timeframe"));
+    }
+
+    #[test]
+    fn crypto_trade_request_safely_encodes_token_and_typed_location() {
+        let client = authenticated_client().unwrap();
+        let credentials = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let mut options = sample_trades_args();
+        options.symbols = "SOL/USD".parse().unwrap();
+        options.location = CryptoLocation::Eu1;
+        options.start = None;
+        options.end = None;
+        options.sort = BarsSort::Desc;
+        options.limit = 10000;
+        let trades =
+            crypto_trades_request(&client, &credentials, &options, Some("ABC+/==")).unwrap();
+        assert_eq!(trades.url().path(), "/v1beta3/crypto/eu-1/trades");
+        assert_eq!(
+            trades.url().query(),
+            Some("symbols=SOL%2FUSD&limit=10000&sort=desc&page_token=ABC%2B%2F%3D%3D")
+        );
     }
 
     #[test]

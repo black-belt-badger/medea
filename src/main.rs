@@ -4,6 +4,7 @@ mod cli;
 mod client;
 mod credentials;
 mod crypto_bars;
+mod crypto_trades;
 mod orders;
 mod output;
 mod positions;
@@ -31,6 +32,9 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::Crypto {
             command: CryptoCommand::Bars(options),
         } => crypto_bars::run_bars(options),
+        Command::Crypto {
+            command: CryptoCommand::Trades(options),
+        } => crypto_trades::run_trades(options),
         Command::Account(options) => {
             let credentials = load_credentials().map_err(|err| err.to_string())?;
             let response = fetch_account(&credentials).map_err(|err| err.to_string())?;
