@@ -1,35 +1,111 @@
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
-// Preserve every financial quantity and price exactly as supplied by Alpaca.
-// The original provider JSON is separately retained for --out.
+use crate::order_types::{
+    OrderClass, OrderPositionIntent, OrderSide, OrderState, OrderTimeInForce, OrderType,
+};
+
+/// Documented order fields that are not part of the concise CLI summary.
+/// All decimal amounts and quantities retain Alpaca's exact JSON strings.
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub struct OrderDetails {
+    asset_id: Option<String>,
+    position_intent: Option<OrderPositionIntent>,
+    // Deprecated provider field, distinct from the typed JSON "type".
+    order_type: Option<String>,
+    order_class: Option<OrderClass>,
+    time_in_force: Option<OrderTimeInForce>,
+    trail_price: Option<String>,
+    trail_percent: Option<String>,
+    hwm: Option<String>,
+    extended_hours: Option<bool>,
+    updated_at: Option<String>,
+    expired_at: Option<String>,
+    canceled_at: Option<String>,
+    failed_at: Option<String>,
+    replaced_at: Option<String>,
+    replaced_by: Option<String>,
+    replaces: Option<String>,
+    expires_at: Option<String>,
+    group_id: Option<String>,
+    group_role: Option<String>,
+    source: Option<String>,
+    subtag: Option<String>,
+    ratio_qty: Option<String>,
+}
+
+/// One paper order, including nullable options/multi-leg attributes.
+/// The same model decodes GET /v2/orders and GET /v2/orders/{order_id}.
+///
+/// The published schema's required list does not match all actual response
+/// variants. Match Kirke's tested operational contract: id and status must be
+/// present; class-specific and nullable fields are optional. No decimal is
+/// converted to floating point. The original provider bytes are saved by
+/// --out without reconstruction or loss of future properties.
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Order {
+    #[serde(deserialize_with = "nonblank_order_id")]
     id: String,
-    client_order_id: String,
-    symbol: String,
+    client_order_id: Option<String>,
+    symbol: Option<String>,
     asset_class: Option<String>,
-    side: String,
+    side: Option<OrderSide>,
     #[serde(rename = "type")]
-    order_type: String,
-    status: String,
+    order_type: Option<OrderType>,
+    status: OrderState,
     qty: Option<String>,
     notional: Option<String>,
-    filled_qty: String,
+    filled_qty: Option<String>,
     filled_avg_price: Option<String>,
     limit_price: Option<String>,
     stop_price: Option<String>,
-    created_at: String,
+    created_at: Option<String>,
     submitted_at: Option<String>,
     filled_at: Option<String>,
+    #[serde(flatten)]
+    details: OrderDetails,
+    legs: Option<Vec<Order>>,
 }
 
-/// GET /v2/orders/{order_id} returns one object rather than a list.
-pub fn decode_order(body: &[u8]) -> Result<Order, serde_json::Error> {
-    serde_json::from_slice(body)
+fn nonblank_order_id<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let id = String::deserialize(deserializer)?;
+    if id.trim().is_empty() {
+        Err(serde::de::Error::custom("missing nonblank order id"))
+    } else {
+        Ok(id)
+    }
 }
 
-pub fn decode_orders(body: &[u8]) -> Result<Vec<Order>, serde_json::Error> {
-    serde_json::from_slice(body)
+/// List and single-order endpoints share the decoder, but not the top-level
+/// response shape. A nonempty grandchildren array is not supported in Kirke
+/// or Medea's typed CLI; provider extension fields remain in --out JSON.
+pub fn decode_order(body: &[u8]) -> Result<Order, String> {
+    let order: Order = serde_json::from_slice(body).map_err(|err| err.to_string())?;
+    check_leg_depth(&order)?;
+    Ok(order)
+}
+
+pub fn decode_orders(body: &[u8]) -> Result<Vec<Order>, String> {
+    let orders: Vec<Order> = serde_json::from_slice(body).map_err(|err| err.to_string())?;
+    for order in &orders {
+        check_leg_depth(order)?;
+    }
+    Ok(orders)
+}
+
+fn check_leg_depth(order: &Order) -> Result<(), String> {
+    if let Some(legs) = &order.legs {
+        for leg in legs {
+            if leg
+                .legs
+                .as_ref()
+                .is_some_and(|children| !children.is_empty())
+            {
+                return Err("Order legs may not nest".into());
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn render_orders_summary(orders: &[Order]) -> String {
@@ -38,7 +114,6 @@ pub fn render_orders_summary(orders: &[Order]) -> String {
         summary.push_str("No matching orders.\n");
         return summary;
     }
-
     summary.push_str(&format!("Orders: {}\n", orders.len()));
     for order in orders {
         summary.push_str(&render_order(order));
@@ -46,7 +121,7 @@ pub fn render_orders_summary(orders: &[Order]) -> String {
     summary
 }
 
-/// Render one order using exactly the same fields as the list command.
+/// Keep a single consistent summary for list and by-ID lookups.
 pub fn render_order_summary(order: &Order) -> String {
     let mut summary = String::from("Medea — Alpaca paper order\n");
     summary.push_str(&render_order(order));
@@ -54,7 +129,7 @@ pub fn render_order_summary(order: &Order) -> String {
 }
 
 fn render_order(order: &Order) -> String {
-    format!(
+    let mut summary = format!(
         concat!(
             "{} ({}, {} {}, {})\n",
             "  ID: {}\n",
@@ -69,23 +144,45 @@ fn render_order(order: &Order) -> String {
             "  Submitted at: {}\n",
             "  Filled at: {}\n"
         ),
-        order.symbol,
+        or_missing(order.symbol.as_deref()),
         or_missing(order.asset_class.as_deref()),
-        order.side,
-        order.order_type,
-        order.status,
+        order
+            .side
+            .as_ref()
+            .map_or("not provided", OrderSide::as_str),
+        order
+            .order_type
+            .as_ref()
+            .map_or("not provided", OrderType::as_str),
+        order.status.as_str(),
         order.id,
-        order.client_order_id,
+        or_missing(order.client_order_id.as_deref()),
         or_missing(order.qty.as_deref()),
         or_missing(order.notional.as_deref()),
-        order.filled_qty,
+        or_missing(order.filled_qty.as_deref()),
         or_missing(order.filled_avg_price.as_deref()),
         or_missing(order.limit_price.as_deref()),
         or_missing(order.stop_price.as_deref()),
-        order.created_at,
+        or_missing(order.created_at.as_deref()),
         or_missing(order.submitted_at.as_deref()),
         or_missing(order.filled_at.as_deref()),
-    )
+    );
+
+    if let Some(legs) = &order.legs
+        && !legs.is_empty()
+    {
+        summary.push_str(&format!("  Legs: {}\n", legs.len()));
+        for leg in legs {
+            summary.push_str(&format!(
+                "    {}: {}, ratio {}, {}\n",
+                or_missing(leg.symbol.as_deref()),
+                leg.side.as_ref().map_or("not provided", OrderSide::as_str),
+                or_missing(leg.details.ratio_qty.as_deref()),
+                leg.status.as_str(),
+            ));
+        }
+    }
+    summary
 }
 
 fn or_missing(value: Option<&str>) -> &str {
@@ -94,7 +191,10 @@ fn or_missing(value: Option<&str>) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_order, decode_orders, render_order_summary, render_orders_summary};
+    use super::{
+        OrderSide, OrderType, decode_order, decode_orders, render_order_summary,
+        render_orders_summary,
+    };
 
     const RESPONSE: &str = r#"[
         {
@@ -121,17 +221,23 @@ mod tests {
     fn decodes_crypto_and_equity_and_preserves_decimal_strings() {
         let orders = decode_orders(RESPONSE.as_bytes()).unwrap();
         assert_eq!(orders.len(), 2);
-        assert_eq!(orders[0].symbol, "BTCUSD");
-        assert_eq!(orders[0].side, "buy");
-        assert_eq!(orders[0].order_type, "market");
-        assert_eq!(orders[0].status, "filled");
+        assert_eq!(orders[0].symbol.as_deref(), Some("BTCUSD"));
+        assert_eq!(orders[0].side.as_ref().map(OrderSide::as_str), Some("buy"));
+        assert_eq!(
+            orders[0].order_type.as_ref().map(OrderType::as_str),
+            Some("market")
+        );
+        assert_eq!(orders[0].status.as_str(), "filled");
         assert_eq!(orders[0].qty.as_deref(), Some("0.000000000123456789"));
-        assert_eq!(orders[0].filled_qty, "0.000000000123456789");
+        assert_eq!(
+            orders[0].filled_qty.as_deref(),
+            Some("0.000000000123456789")
+        );
         assert_eq!(
             orders[0].filled_avg_price.as_deref(),
             Some("90000.123456789")
         );
-        assert_eq!(orders[1].symbol, "AAPL");
+        assert_eq!(orders[1].symbol.as_deref(), Some("AAPL"));
         assert_eq!(orders[1].notional.as_deref(), Some("123.45000000"));
         assert_eq!(orders[1].limit_price.as_deref(), Some("203.50"));
     }
@@ -143,12 +249,12 @@ mod tests {
             "side":"buy","type":"market","status":"filled",
             "filled_qty":"0.00000000000001",
             "created_at":"2026-11-13T00:00:00Z",
-            "qty":null,"submitted_at":null,"legs":[{"provider_specific":true}]
+            "qty":null,"submitted_at":null,"legs":null
         }"#;
         let order = decode_order(response).unwrap();
         assert_eq!(order.id, "id-1");
-        assert_eq!(order.symbol, "BTCUSD");
-        assert_eq!(order.filled_qty, "0.00000000000001");
+        assert_eq!(order.symbol.as_deref(), Some("BTCUSD"));
+        assert_eq!(order.filled_qty.as_deref(), Some("0.00000000000001"));
         assert_eq!(order.asset_class, None);
         assert_eq!(order.qty, None);
         assert_eq!(order.submitted_at, None);
@@ -263,3 +369,7 @@ mod tests {
         assert!(decode_orders(bad.as_bytes()).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "orders_fidelity_tests.rs"]
+mod fidelity_tests;

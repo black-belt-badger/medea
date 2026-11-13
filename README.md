@@ -206,7 +206,7 @@ medea orders --status all --limit 10 \
   --before-order-id 9275f66a-0a1b-4a22-8c55-167416c7cf14
 ```
 
-The UUID above is illustrative; obtain a real server-issued `id` from your paper orders. See the [M3 order request API coverage matrix](docs/api/orders.md). The 37-field response and nested legs will be audited in a separate PR.
+The UUID above is illustrative; obtain a real server-issued `id` from your paper orders. See the [M3 order request API coverage matrix](docs/api/orders.md). The response decoder now covers all 37 documented order fields and 35 nested-leg fields, with typed known/future enum strings, exact decimal amounts and nested-leg summaries. See [M3 Orders response coverage](docs/api/orders-response.md) for the field matrix, provider-requiredness caveats and the shared Kirke/Atalanta test fixtures.
 
 To save the **complete original JSON response** instead of a terminal summary:
 
@@ -231,7 +231,7 @@ The UUID above is an **illustrative placeholder**, not a real order. Use an ID f
 
 Medea requires a canonical 36-character UUID and rejects malformed IDs, path separators, query strings and fragments *before* loading credentials. `--nested` sends the optional Alpaca `nested=true` query parameter to roll up multi-leg orders; without it no query string is sent. A missing order produces a dedicated `Alpaca paper order not found (HTTP 404)` message, distinct from authentication, transport or decoding failures.
 
-A successful lookup returns a **JSON object**, not an array. The readable view reuses the order-listing fields and preserves decimal strings and nullability. `--out PATH` saves the **complete original JSON**, including extra fields or nested `legs`, by atomic replacement with owner-only permissions (normally `0600`). The parent directory must exist.
+A successful lookup returns a **JSON object**, not an array. The readable view reuses the order-listing fields and preserves decimal strings and nullability. Nested bracket or multi-leg children are typed and shown with their exact ratios when requested; future enum strings are preserved. `--out PATH` saves the **complete original JSON**, including extra fields or nested `legs`, by atomic replacement with owner-only permissions (normally `0600`). The parent directory must exist.
 
 Like Kirke, this command is **read-only and paper-only**. It does not place, modify or cancel orders. Official documentation: [GET /v2/orders/{order_id}](https://docs.alpaca.markets/us/reference/getorderbyorderid-1).
 

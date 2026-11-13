@@ -1,0 +1,52 @@
+{
+  "id": "55555555-6666-4777-8888-999999999999",
+  "client_order_id": "SYNTHETIC-MLEG-1",
+  "symbol": "AAPL",
+  "asset_class": "us_option",
+  "status": "filled",
+  "order_class": "mleg",
+  "type": "limit",
+  "time_in_force": "day",
+  "side": null,
+  "qty": "1",
+  "filled_qty": "1",
+  "limit_price": "0.50",
+  "filled_avg_price": "0.50",
+  "created_at": "2026-11-13T03:00:00Z",
+  "filled_at": "2026-11-13T03:00:01Z",
+  "legs": [
+    {
+      "id": "33333333-4444-4555-8666-777777777777",
+      "symbol": "AAPL261120C00200000",
+      "asset_class": "us_option",
+      "side": "buy",
+      "position_intent": "buy_to_open",
+      "status": "filled",
+      "type": "limit",
+      "order_type": "limit",
+      "time_in_force": "day",
+      "qty": "1",
+      "ratio_qty": "1.000000000000000001",
+      "filled_qty": "1",
+      "filled_avg_price": "1.25",
+      "limit_price": "1.2500000001",
+      "order_class": "mleg",
+      "created_at": "2026-11-13T03:00:00Z",
+      "filled_at": "2026-11-13T03:00:00.123Z"
+    },
+    {
+      "id": "44444444-5555-4666-8777-888888888888",
+      "symbol": "AAPL261120C00210000",
+      "asset_class": "us_option",
+      "side": "sell",
+      "position_intent": "sell_to_open",
+      "status": "filled",
+      "type": "limit",
+      "time_in_force": "day",
+      "qty": "1",
+      "filled_qty": "1",
+      "limit_price": "0.75",
+      "ratio_qty": "2.000000000000000002"
+    }
+  ]
+}

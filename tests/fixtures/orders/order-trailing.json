@@ -1,0 +1,16 @@
+{
+  "id": "88888888-9999-4aaa-8bbb-cccccccccccc",
+  "symbol": "SOLUSD",
+  "asset_class": "crypto",
+  "side": "sell",
+  "status": "new",
+  "type": "trailing_stop",
+  "time_in_force": "gtc",
+  "order_class": "simple",
+  "qty": "0.125",
+  "filled_qty": "0",
+  "trail_price": "2.5",
+  "trail_percent": null,
+  "hwm": "252.123456789",
+  "extended_hours": null
+}

@@ -1,0 +1,13 @@
+{
+  "id": "99999999-aaaa-4bbb-8ccc-dddddddddddd",
+  "asset_class": "FUTURE_CLASS",
+  "symbol": "FUTURE_SYMBOL",
+  "status": "FUTURE_STATUS",
+  "side": "FUTURE_SIDE",
+  "type": "FUTURE_TYPE",
+  "time_in_force": "FUTURE_TIF",
+  "filled_qty": "0.0000",
+  "future_field": {
+    "new_flag": true
+  }
+}

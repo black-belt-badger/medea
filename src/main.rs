@@ -9,6 +9,7 @@ mod credentials;
 mod crypto_bars;
 mod crypto_trades;
 mod order_filters;
+mod order_types;
 mod orders;
 mod output;
 mod positions;
