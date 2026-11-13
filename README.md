@@ -45,7 +45,7 @@ Medea reads **only** these environment variables:
 - `APCA_API_KEY_ID`
 - `APCA_API_SECRET_KEY`
 
-The requests use the Alpaca authentication headers over HTTPS to `GET /v2/account`, `GET /v2/positions`, `GET /v2/assets`, `GET /v2/orders`, and `GET /v2/orders/{order_id}` on `https://paper-api.alpaca.markets`. It has a 20-second timeout, does not follow redirects, and never connects to the live trading endpoint.
+Authenticated requests use HTTPS to the fixed `https://paper-api.alpaca.markets` host: the read-only `GET /v2/account`, `GET /v2/positions`, `GET /v2/assets`, `GET /v2/orders` and `GET /v2/orders/{order_id}`, plus **only with explicit `--confirm`** a `DELETE /v2/orders/{order_id}` paper-order cancellation. Dry-run cancellation reads no credentials. All requests have a 20-second timeout, forbid redirects and never connect to the live trading endpoint.
 
 You can set them directly in your shell, or prepare a private file outside the repository:
 
@@ -235,6 +235,25 @@ A successful lookup returns a **JSON object**, not an array, and its server-issu
 
 Like Kirke, this command is **read-only and paper-only**. It does not place, modify or cancel orders. HTTP 404 reports a distinct nonzero order-not-found error; authentication/permission/rate-limit/network and malformed/mismatched-result errors are reported without leaking provider bodies, secrets, or order IDs. See the [M3 Order-by-ID coverage and error matrix](docs/api/order-by-id.md) and the [official endpoint documentation](https://docs.alpaca.markets/us/reference/getorderbyorderid-1).
 
+## Cancel a single paper order (explicit opt-in)
+
+**Cancelling an order can change paper account state.** Medea defaults to an entirely offline preview, with no credentials or HTTP activity:
+
+```sh
+# Safe dry run, using an illustrative UUID:
+medea order cancel 9275f66a-0a1b-4a22-8c55-167416c7cf14
+
+# Only if you intend to cancel an ACTUAL paper order:
+medea order cancel ACTUAL_SERVER_ORDER_UUID --confirm
+
+# A successful 204 is only acceptance: inspect the final status separately.
+medea order get ACTUAL_SERVER_ORDER_UUID
+```
+
+The argument must be the paper order's **server-issued `id`**, not `client_order_id`. Both the CLI and low-level HTTP builder require explicit confirmation; no request is sent by a default invocation. A confirmed call sends **one DELETE** to the fixed **paper-only** Alpaca API without automatic retries or redirection. `204` means cancellation was accepted, **not** confirmed complete. An order may fill before cancellation takes effect. `404` means not found, while `422` means not cancelable; other HTTP and transport failures remain separate. A timed-out request has an uncertain outcome, so check status before considering a repeat cancellation.
+
+No cancel-all operation or live-trading host is supported. See the [cancel API and safety contract](docs/api/order-cancel.md). Automated tests and `scripts/cd.sh` exercise only the **unconfirmed offline dry run**, never a live DELETE.
+
 ## Historical crypto bars (Alpaca Market Data)
 
 Historical bars use **`https://data.alpaca.markets/v1beta3/crypto/{loc}/bars`**, authenticated with the same API-key variables. This is a **read-only market-data endpoint**, separate from paper trading. The command never submits orders.
@@ -337,7 +356,7 @@ The logo, illustrations, and source images are documented in [Branding and asset
 
 ## Roadmap, contributions, and safety
 
-Next: historical crypto data coverage, account state, and carefully controlled paper trading. **Live trading, order submission/cancellation, and streaming are not part of this version.**
+Next: historical crypto coverage, account state and carefully controlled paper trading. **Live trading and streaming remain out of scope.** Single-order cancellation exists only on the paper API and always requires explicit `--confirm`; paper submission is tracked separately.
 
 Medea is available under the [BSD 3-Clause License](LICENSE), copyright © 2026 Marek Dudek. See the [GitHub Releases](https://github.com/black-belt-badger/medea/releases) page for source releases and version notes.
 

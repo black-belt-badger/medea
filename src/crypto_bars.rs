@@ -446,6 +446,9 @@ pub fn market_data_error_message(err: &ClientError) -> String {
             format!("Alpaca market data API returned HTTP {code}.")
         }
         ClientError::OrderNotFound => "Unexpected order-lookup error from market data API.".into(),
+        ClientError::ConfirmationRequired | ClientError::OrderNotCancelable => {
+            "Unexpected paper-order cancellation error from market data API.".into()
+        }
     }
 }
 

@@ -86,6 +86,17 @@ jq -e 'type == "array" and all(.[];
 # single-order GET using the validated server-assigned UUID from the list.
 ./target/release/medea order --help > /dev/null
 ./target/release/medea order get --help > /dev/null
+./target/release/medea order cancel --help > /dev/null
+# Safety: only offline dry-run, NEVER --confirm in integration scripts.
+# Unset credential variables explicitly to prove the preview is offline.
+dry_cancel_id=9275f66a-0a1b-4a22-8c55-167416c7cf14
+env -u APCA_API_KEY_ID -u APCA_API_SECRET_KEY \
+  ./target/release/medea order cancel "$dry_cancel_id" > ./output/order-cancel-dry-run.txt
+grep -q '^DRY RUN' ./output/order-cancel-dry-run.txt
+grep -q 'no cancellation was sent' ./output/order-cancel-dry-run.txt
+grep -q -- '--confirm' ./output/order-cancel-dry-run.txt
+test "$(stat -c '%a' ./output/order-cancel-dry-run.txt)" = 600
+
 if jq -e 'length > 0' ./output/orders.json > /dev/null; then
   order_id="$(jq -r '.[0].id' ./output/orders.json)"
   ./target/release/medea order get "$order_id" > ./output/order-summary.txt
