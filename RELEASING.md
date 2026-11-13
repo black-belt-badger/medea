@@ -20,7 +20,7 @@ Medea is an **unofficial Rust CLI** for read-only paper Trading API state and hi
    cargo clippy --locked --all-targets --all-features -- -D warnings
    cargo test --locked --all-targets
    cargo build --locked --release
-   ./scripts/it.sh
+   ./scripts/cd.sh
    ```
 
    The opt-in integration script tests paper-account/order reads and bounded historical crypto bars/trades using private local credentials. **Never upload actual account data, crypto responses or secrets** to public CI or release assets.

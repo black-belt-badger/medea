@@ -36,7 +36,7 @@ cargo test --locked --all-targets
 cargo build --locked --release
 ```
 
-GitHub Actions runs the same checks on pull requests and `main` pushes but does not install the CLI globally. The local script does not run the credential-dependent paper API test; use `scripts/it.sh` explicitly for that.
+GitHub Actions runs the same checks on pull requests and `main` pushes but does not install the CLI globally. The local script does not run the credential-dependent paper API test; use `scripts/cd.sh` explicitly for that.
 
 ## API credentials (paper trading and crypto market data)
 
@@ -261,18 +261,18 @@ This is bounded historical data access, not inventory or backfill planning (thos
 
 ## Integration check (maintainers)
 
-The explicit script `scripts/it.sh` runs the real **paper-only** account, positions, assets, and order commands, plus bounded historical crypto-bars and crypto-trades requests, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
+The explicit script `scripts/cd.sh` runs the real **paper-only** account, positions, assets, and order commands, plus bounded historical crypto-bars and crypto-trades requests, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
 
 On a trusted Linux machine with `jq`, `stat`, and paper credentials:
 
 ```sh
-./scripts/it.sh
+./scripts/cd.sh
 ```
 
 By default the script sources `${XDG_CONFIG_HOME:-$HOME/.config}/medea/credentials`. If your private credentials live elsewhere, pass their path via `MEDEA_CREDENTIALS_FILE`; for example, maintainers sharing Kirke's paper credentials can use:
 
 ```sh
-MEDEA_CREDENTIALS_FILE="$HOME/.config/kirke/credentials" ./scripts/it.sh
+MEDEA_CREDENTIALS_FILE="$HOME/.config/kirke/credentials" ./scripts/cd.sh
 ```
 
 Do not paste the script's private outputs into CI, an issue, or a release.
