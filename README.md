@@ -78,7 +78,7 @@ cargo run --locked -- account --help
 cargo run --locked -- account
 ```
 
-The first command shows CLI help. The second retrieves a paper account and prints a summary containing account number, status, currency, cash, equity, buying power, trading-blocked flag, and optional crypto status. Both `status` and `crypto_status` are typed account-status enums (not just ACTIVE/INACTIVE flags), and unknown future values are preserved. See [M3 account API coverage](docs/api/account.md). Example with sensitive values redacted:
+The first command shows CLI help. The second retrieves a paper account and prints a summary containing account number, status, currency, cash, equity, buying power, trading-blocked flag, and crypto status. Both statuses are typed enums (not just ACTIVE/INACTIVE flags), with unknown future values preserved. Medea now decodes and type-checks all 34 properties in Alpaca's published account response schema: only `id` and `status` are required, and `account_number` can be null. If a summary field is omitted or null, it prints `not provided` rather than inventing a value. See [M3 account API coverage](docs/api/account.md). Example with sensitive values redacted:
 
 ```text
 Medea — Alpaca paper account
