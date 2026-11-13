@@ -547,6 +547,8 @@ mod tests {
         assert_eq!(positions.url().scheme(), "https");
         assert_eq!(positions.url().host_str(), Some("paper-api.alpaca.markets"));
         assert_eq!(positions.url().path(), "/v2/positions");
+        assert_eq!(positions.url().query(), None); // No filters on this list operation.
+        assert!(positions.body().is_none());
         assert_eq!(positions.url().port_or_known_default(), Some(443));
         assert_eq!(positions.headers(), account.headers());
     }

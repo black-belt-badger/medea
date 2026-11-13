@@ -10,6 +10,7 @@ Versions use [Semantic Versioning](https://semver.org/).
 - Model `account.status` and optional `account.crypto_status` as the same forward-compatible `AccountStatus` enum; unknown future values survive parsing without changing human summaries or raw provider JSON exports.
 - Decode all 34 documented `GET /v2/account` response fields with strict wire types, including two integer options-level enums. Only `id` and `status` are required; absent/null optional values display as `not provided`, while `--out` still preserves the complete original provider JSON.
 - Complete `GET /v2/assets` API fidelity: ten asset classes, typed `--exchange` and `--attributes` filters, equity/index restrictions, all 19 documented response fields, forward-compatible enum decoding and exact financial numbers. Preserve the crypto CLI default and private raw JSON exports.
+- Complete `GET /v2/positions` decoding: 22 documented response fields (17 required), nested ten-field USD values for local-currency accounts, shared typed asset class/exchange enums, typed long/short side with unknown-value fallback and exact decimal strings. Preserve current summaries and private original JSON exports.
 
 ## [0.2.0] - 2026-11-13
 

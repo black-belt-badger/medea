@@ -96,6 +96,9 @@ pub enum KnownAssetVenue {
     Ascx,
     #[serde(rename = "INDEX")]
     Index,
+    // GET /v2/positions permits an empty exchange string for certain assets.
+    #[serde(rename = "")]
+    NoExchange,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -262,6 +265,13 @@ mod tests {
             assert_eq!(decoded, AssetVenue::Known(expected));
             assert_eq!(serde_json::to_string(&decoded).unwrap(), json);
         }
+    }
+
+    #[test]
+    fn empty_position_exchange_is_a_known_provider_value() {
+        let decoded: AssetVenue = serde_json::from_str(r#""""#).unwrap();
+        assert_eq!(decoded, AssetVenue::Known(KnownAssetVenue::NoExchange));
+        assert_eq!(serde_json::to_string(&decoded).unwrap(), r#""""#);
     }
 
     #[test]
