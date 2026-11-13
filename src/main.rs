@@ -23,8 +23,10 @@ use std::path::Path;
 
 use account::{decode_account, render_account_summary};
 use assets::{decode_assets, render_assets_summary};
-use cli::{Cli, Command, CryptoCommand, OrderCommand};
-use client::{fetch_account, fetch_assets, fetch_order, fetch_orders, fetch_positions};
+use cli::{Cli, Command, CryptoCommand, OrderCommand, OrderId};
+use client::{
+    ClientError, fetch_account, fetch_assets, fetch_order, fetch_orders, fetch_positions,
+};
 use credentials::load_credentials;
 use order_lookup::decode_order_lookup;
 use orders::{decode_orders, render_order_summary, render_orders_summary};
@@ -74,18 +76,11 @@ fn run(cli: Cli) -> Result<(), String> {
             command: OrderCommand::Get(options),
         } => {
             let credentials = load_credentials().map_err(|err| err.to_string())?;
-            // Decode and verify that the returned primary order ID matches the
-            // requested UUID before displaying or exporting *any* bytes.
-            let (order, response) =
-                decode_order_lookup(&options.order_id, fetch_order(&credentials, &options))?;
-            match options.output {
-                None => print!("{}", render_order_summary(&order)),
-                Some(path) => {
-                    save_private_json(&path, &response)
-                        .map_err(|err| format!("Could not save order JSON: {err}"))?;
-                    println!("Saved complete order JSON to {}", path.display());
-                }
-            }
+            let response = fetch_order(&credentials, &options);
+            print!(
+                "{}",
+                present_order_get(&options.order_id, response, options.output.as_deref())?
+            );
             Ok(())
         }
         Command::Orders(options) => {
@@ -192,3 +187,25 @@ fn present_orders(response: &[u8], output: Option<&Path>) -> Result<String, Stri
 #[cfg(test)]
 #[path = "orders_acceptance_tests.rs"]
 mod orders_acceptance_tests;
+
+// One endpoint boundary for network outcome, UUID matching and safe output.
+// Invalid or unrelated provider responses cannot reach stdout or replace files.
+fn present_order_get(
+    requested: &OrderId,
+    response: Result<Vec<u8>, ClientError>,
+    output: Option<&Path>,
+) -> Result<String, String> {
+    let (order, raw) = decode_order_lookup(requested, response)?;
+    match output {
+        None => Ok(render_order_summary(&order)),
+        Some(path) => {
+            save_private_json(path, &raw)
+                .map_err(|err| format!("Could not save order JSON: {err}"))?;
+            Ok(format!("Saved complete order JSON to {}\n", path.display()))
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "order_lookup_acceptance_tests.rs"]
+mod order_lookup_acceptance_tests;
