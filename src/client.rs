@@ -506,12 +506,14 @@ mod tests {
     };
     use crate::cli::{
         AssetAttribute, AssetAttributes, AssetClass, AssetExchange, AssetExchanges, AssetStatus,
-        AssetsArgs, OrderDirection, OrderGetArgs, OrderStatus, OrderSymbols, OrdersArgs,
+        AssetsArgs, Cli, Command, OrderDirection, OrderGetArgs, OrderStatus, OrderSymbols,
+        OrdersArgs,
     };
     use crate::credentials::Credentials;
     use crate::crypto_bars::{BarsFormat, BarsSort, CryptoBarsArgs, CryptoLocation};
     use crate::crypto_quotes::CryptoQuotesArgs;
     use crate::crypto_trades::CryptoTradesArgs;
+    use clap::Parser;
     use reqwest::{Method, StatusCode};
 
     fn sample_assets_args(asset_class: AssetClass, status: Option<AssetStatus>) -> AssetsArgs {
@@ -788,6 +790,51 @@ mod tests {
         assert_eq!(assets.url().query(), Some("asset_class=crypto"));
         assert_eq!(assets.url().port_or_known_default(), Some(443));
         assert_eq!(assets.headers(), account.headers());
+    }
+
+    #[test]
+    fn parsed_assets_command_preserves_real_cli_defaults_and_every_filter_in_request() {
+        let client = authenticated_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let default = Cli::try_parse_from(["medea", "assets"]).unwrap();
+        let Command::Assets(options) = default.command else {
+            panic!("expected assets");
+        };
+        options.validate().unwrap();
+        let request = assets_request(&client, &creds, &options).unwrap();
+        assert_eq!(request.url().query(), Some("asset_class=crypto"));
+
+        let parsed = Cli::try_parse_from([
+            "medea",
+            "assets",
+            "--asset-class",
+            "us_equity",
+            "--status",
+            "inactive",
+            "--exchange",
+            "NASDAQ, NYSE",
+            "--attributes",
+            "has_options, ipo",
+            "--out",
+            "private.json",
+        ])
+        .unwrap();
+        let Command::Assets(options) = parsed.command else {
+            panic!("expected assets");
+        };
+        options.validate().unwrap();
+        let request = assets_request(&client, &creds, &options).unwrap();
+        assert_eq!(
+            request.url().query(),
+            Some(
+                "asset_class=us_equity&status=inactive&exchange=NASDAQ%2CNYSE&attributes=has_options%2Cipo"
+            )
+        );
+        assert!(request.body().is_none());
+        assert_eq!(options.output, Some("private.json".into()));
     }
 
     #[test]
