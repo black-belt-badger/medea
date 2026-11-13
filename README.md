@@ -78,7 +78,7 @@ cargo run --locked -- account --help
 cargo run --locked -- account
 ```
 
-The first command shows CLI help. The second retrieves a paper account and prints a summary containing account number, status, currency, cash, equity, buying power, trading-blocked flag, and optional crypto status. Example with sensitive values redacted:
+The first command shows CLI help. The second retrieves a paper account and prints a summary containing account number, status, currency, cash, equity, buying power, trading-blocked flag, and optional crypto status. Both `status` and `crypto_status` are typed account-status enums (not just ACTIVE/INACTIVE flags), and unknown future values are preserved. See [M3 account API coverage](docs/api/account.md). Example with sensitive values redacted:
 
 ```text
 Medea — Alpaca paper account

@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use crate::account_status::AccountStatus;
+
 // Numeric monetary fields are JSON strings. Preserve their exact decimal spelling.
 // The ID is validated but excluded from human-readable output.
 #[derive(Deserialize)]
@@ -7,13 +9,13 @@ pub struct Account {
     #[serde(rename = "id")]
     _id: String,
     account_number: String,
-    status: String,
+    status: AccountStatus,
     currency: String,
     cash: String,
     equity: String,
     buying_power: String,
     trading_blocked: bool,
-    crypto_status: Option<String>,
+    crypto_status: Option<AccountStatus>,
 }
 
 pub fn decode_account(body: &[u8]) -> Result<Account, serde_json::Error> {
@@ -38,13 +40,17 @@ pub fn render_account_summary(account: &Account) -> String {
         account.equity,
         account.buying_power,
         if account.trading_blocked { "yes" } else { "no" },
-        account.crypto_status.as_deref().unwrap_or("not provided"),
+        account
+            .crypto_status
+            .as_ref()
+            .map_or("not provided", AccountStatus::as_str),
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::{decode_account, render_account_summary};
+    use crate::account_status::AccountStatus;
 
     const RESPONSE: &str = r#"{
         "id":"private-id",
@@ -65,7 +71,8 @@ mod tests {
         assert_eq!(account.cash, "-12.345678901234567890");
         assert_eq!(account.equity, "1250.50");
         assert_eq!(account.buying_power, "2000");
-        assert_eq!(account.crypto_status.as_deref(), Some("ACTIVE"));
+        assert_eq!(account.status, AccountStatus::Active);
+        assert_eq!(account.crypto_status, Some(AccountStatus::Active));
     }
 
     #[test]
@@ -86,6 +93,69 @@ mod tests {
         let account = decode_account(response.as_bytes()).unwrap();
         assert!(account.crypto_status.is_none());
         assert!(render_account_summary(&account).contains("Crypto status: not provided\n"));
+    }
+
+    #[test]
+    fn account_and_crypto_status_are_independent_enums() {
+        let response = RESPONSE
+            .replace(r#""status":"ACTIVE""#, r#""status":"LIMITED""#)
+            .replace(
+                r#""crypto_status":"ACTIVE""#,
+                r#""crypto_status":"PAPER_ONLY""#,
+            );
+        let account = decode_account(response.as_bytes()).unwrap();
+        assert_eq!(account.status, AccountStatus::Limited);
+        assert_eq!(account.crypto_status, Some(AccountStatus::PaperOnly));
+        let summary = render_account_summary(&account);
+        assert!(summary.contains("Status: LIMITED\n"));
+        assert!(summary.contains("Crypto status: PAPER_ONLY\n"));
+    }
+
+    #[test]
+    fn unknown_future_statuses_are_retained_in_both_fields() {
+        let response = RESPONSE
+            .replace(r#""status":"ACTIVE""#, r#""status":"NEW_ACCOUNT_STATUS""#)
+            .replace(
+                r#""crypto_status":"ACTIVE""#,
+                r#""crypto_status":"NEW_CRYPTO_STATUS""#,
+            );
+        let account = decode_account(response.as_bytes()).unwrap();
+        assert_eq!(
+            account.status,
+            AccountStatus::Other("NEW_ACCOUNT_STATUS".into())
+        );
+        assert_eq!(
+            account.crypto_status,
+            Some(AccountStatus::Other("NEW_CRYPTO_STATUS".into()))
+        );
+        let summary = render_account_summary(&account);
+        assert!(summary.contains("Status: NEW_ACCOUNT_STATUS\n"));
+        assert!(summary.contains("Crypto status: NEW_CRYPTO_STATUS\n"));
+    }
+
+    #[test]
+    fn null_optional_crypto_status_is_allowed() {
+        let response = RESPONSE.replace(r#""crypto_status":"ACTIVE""#, r#""crypto_status":null"#);
+        let account = decode_account(response.as_bytes()).unwrap();
+        assert_eq!(account.crypto_status, None);
+        assert!(render_account_summary(&account).contains("Crypto status: not provided\n"));
+    }
+
+    #[test]
+    fn required_status_cannot_be_missing_or_null() {
+        let null = RESPONSE.replace(r#""status":"ACTIVE""#, r#""status":null"#);
+        let missing = RESPONSE.replace(r#""status":"ACTIVE","#, "");
+        assert!(decode_account(null.as_bytes()).is_err());
+        assert!(decode_account(missing.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn status_fields_must_be_json_strings_when_present() {
+        let invalid_status = RESPONSE.replace(r#""status":"ACTIVE""#, r#""status":1"#);
+        let invalid_crypto =
+            RESPONSE.replace(r#""crypto_status":"ACTIVE""#, r#""crypto_status":false"#);
+        assert!(decode_account(invalid_status.as_bytes()).is_err());
+        assert!(decode_account(invalid_crypto.as_bytes()).is_err());
     }
 
     #[test]
