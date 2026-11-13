@@ -8,7 +8,7 @@
 
 **Medea** is an unofficial Rust CLI developed alongside [Kirke](https://github.com/black-belt-badger/kirke), its Haskell counterpart. Both aim for the same user-facing Alpaca API behavior while remaining idiomatic in their respective languages.
 
-**Current scope: read-only Alpaca paper account information, open positions, asset discovery, order history/details, and historical crypto bars and trades from Alpaca Market Data.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
+**Current scope: read-only Alpaca paper account information, open positions, asset discovery, order history/details, and historical crypto bars, trades and quotes from Alpaca Market Data.** Medea is not affiliated with, sponsored by, or endorsed by Alpaca Markets.
 
 ## Requirements
 
@@ -290,6 +290,27 @@ Rust stores trade IDs as arbitrary-precision integer JSON numbers and uses **`se
 
 This is bounded historical data access, not inventory or backfill planning (those belong to Metis/Ariadne). No orders are submitted, cancelled or modified.
 
+## Historical crypto quotes (Alpaca Market Data)
+
+Read-only best bid/ask history uses **`GET https://data.alpaca.markets/v1beta3/crypto/{loc}/quotes`**. The request has no timeframe; it reuses Medea's authenticated crypto market-data transport.
+
+```sh
+medea crypto quotes --symbols BTC/USD,ETH/USD \
+  --start 2026-10-02T00:00:00Z --end 2026-10-03T00:00:00Z
+
+medea crypto quotes --symbols BTC/USD,SOL/USD \
+  --limit 500 --max-pages 3 --sort asc --out output/crypto-quotes.json
+
+medea crypto quotes --symbols BTC/USD --max-pages 2 \
+  --format jsonl --out output/btc-quotes.jsonl
+```
+
+**Filters:** required `--symbols` (1–30 comma-separated crypto pairs), optional `--location us|us-1|us-2|eu-1|bs-1` (default `us`), inclusive `--start`/`--end` (date or RFC3339), `--limit 1..10000` (default 1,000 across **all** symbols per page), `--sort asc|desc` (default asc), `--max-pages 1..20` (default one), `--page-token`, `--format json|jsonl` and `--out PATH`.
+
+**Response:** Each symbol has timestamped `ap`/`as` (ask price/size) and `bp`/`bs` (bid price/size). Four exact `serde_json::Number` values avoid floating-point rounding; the original nanosecond timestamp text is retained. Default terminal output is a concise summary; JSON export retains complete original response pages and the final continuation token. JSONL emits one symbolized quote per line, without a continuation token.
+
+**Streaming and privacy:** Bounded requests process one page at a time, reject repeated continuation tokens, and write private owner-only files atomically; failed later pages leave existing files intact. JSONL printed directly to stdout cannot be rolled back. The full [quote request/response contract](docs/api/crypto-quotes.md) documents precision, validation, failure behavior and offline tests.
+
 ## Integration check (maintainers)
 
 The explicit script `scripts/cd.sh` runs the real **paper-only** account, positions, assets, and order commands, plus bounded historical crypto-bars and crypto-trades requests, checks JSON structures and private output permissions, and leaves any account data in the ignored `output/` directory. It is **not** run in public CI.
@@ -316,7 +337,7 @@ The logo, illustrations, and source images are documented in [Branding and asset
 
 ## Roadmap, contributions, and safety
 
-Next: historical crypto quotes, account state, and carefully controlled paper trading. **Live trading, order submission/cancellation, and streaming are not part of this version.**
+Next: historical crypto data coverage, account state, and carefully controlled paper trading. **Live trading, order submission/cancellation, and streaming are not part of this version.**
 
 Medea is available under the [BSD 3-Clause License](LICENSE), copyright © 2026 Marek Dudek. See the [GitHub Releases](https://github.com/black-belt-badger/medea/releases) page for source releases and version notes.
 

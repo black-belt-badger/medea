@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::crypto_bars::CryptoBarsArgs;
+use crate::crypto_quotes::CryptoQuotesArgs;
 use crate::crypto_trades::CryptoTradesArgs;
 use crate::order_filters::{OrderAssetClasses, OrderInstant, OrderSideFilter};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -45,6 +46,8 @@ pub enum CryptoCommand {
     Bars(CryptoBarsArgs),
     /// Fetch bounded historical crypto executions.
     Trades(CryptoTradesArgs),
+    /// Fetch bounded historical crypto best bid/ask quotes.
+    Quotes(CryptoQuotesArgs),
 }
 
 #[derive(Debug, Args, PartialEq, Eq)]

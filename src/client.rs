@@ -9,6 +9,7 @@ use reqwest::redirect::Policy;
 use crate::cli::{AssetsArgs, OrderGetArgs, OrdersArgs};
 use crate::credentials::Credentials;
 use crate::crypto_bars::{BarsInstant, BarsSort, CryptoBarsArgs, CryptoLocation, CryptoSymbols};
+use crate::crypto_quotes::CryptoQuotesArgs;
 use crate::crypto_trades::CryptoTradesArgs;
 
 const PAPER_ACCOUNT_URL: &str = "https://paper-api.alpaca.markets/v2/account";
@@ -140,6 +141,7 @@ fn orders_request(
 enum CryptoDataKind {
     Bars,
     Trades,
+    Quotes,
 }
 
 impl CryptoDataKind {
@@ -147,6 +149,7 @@ impl CryptoDataKind {
         match self {
             Self::Bars => "bars",
             Self::Trades => "trades",
+            Self::Quotes => "quotes",
         }
     }
 }
@@ -197,6 +200,29 @@ fn crypto_trades_request(
         credentials,
         CryptoDataQuery {
             kind: CryptoDataKind::Trades,
+            symbols: &options.symbols,
+            location: options.location,
+            timeframe: None,
+            start: options.start.as_ref(),
+            end: options.end.as_ref(),
+            limit: options.limit,
+            sort: options.sort,
+            page_token: token,
+        },
+    )
+}
+
+fn crypto_quotes_request(
+    client: &Client,
+    credentials: &Credentials,
+    options: &CryptoQuotesArgs,
+    token: Option<&str>,
+) -> Result<Request, ClientError> {
+    crypto_data_request(
+        client,
+        credentials,
+        CryptoDataQuery {
+            kind: CryptoDataKind::Quotes,
             symbols: &options.symbols,
             location: options.location,
             timeframe: None,
@@ -300,6 +326,16 @@ pub fn fetch_crypto_trades_page(
     })
 }
 
+pub fn fetch_crypto_quotes_page(
+    credentials: &Credentials,
+    options: &CryptoQuotesArgs,
+    token: Option<&str>,
+) -> Result<Vec<u8>, ClientError> {
+    fetch_authenticated(credentials, |client, credentials| {
+        crypto_quotes_request(client, credentials, options, token)
+    })
+}
+
 pub fn fetch_account(credentials: &Credentials) -> Result<Vec<u8>, ClientError> {
     fetch_authenticated(credentials, account_request)
 }
@@ -372,8 +408,8 @@ fn check_status(status: StatusCode) -> Result<(), ClientError> {
 mod tests {
     use super::{
         ClientError, account_request, assets_request, authenticated_client, check_status,
-        crypto_bars_request, crypto_trades_request, order_error, order_request, orders_request,
-        positions_request,
+        crypto_bars_request, crypto_quotes_request, crypto_trades_request, order_error,
+        order_request, orders_request, positions_request,
     };
     use crate::cli::{
         AssetAttribute, AssetAttributes, AssetClass, AssetExchange, AssetExchanges, AssetStatus,
@@ -381,6 +417,7 @@ mod tests {
     };
     use crate::credentials::Credentials;
     use crate::crypto_bars::{BarsFormat, BarsSort, CryptoBarsArgs, CryptoLocation};
+    use crate::crypto_quotes::CryptoQuotesArgs;
     use crate::crypto_trades::CryptoTradesArgs;
     use reqwest::{Method, StatusCode};
 
@@ -423,6 +460,69 @@ mod tests {
             format: BarsFormat::Json,
             output: None,
         }
+    }
+
+    fn sample_quotes_args() -> CryptoQuotesArgs {
+        CryptoQuotesArgs {
+            symbols: "BTC/USD,ETH/USD".parse().unwrap(),
+            location: CryptoLocation::Us,
+            start: Some("2026-10-02T00:00:00.123456789Z".parse().unwrap()),
+            end: Some("2026-10-02T02:00:00Z".parse().unwrap()),
+            limit: 25,
+            sort: BarsSort::Asc,
+            max_pages: 2,
+            page_token: None,
+            format: BarsFormat::Json,
+            output: None,
+        }
+    }
+
+    #[test]
+    fn crypto_quotes_request_uses_shared_auth_and_precisely_encoded_parameters() {
+        let client = authenticated_client().unwrap();
+        let credentials = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let quotes =
+            crypto_quotes_request(&client, &credentials, &sample_quotes_args(), None).unwrap();
+        let account = account_request(&client, &credentials).unwrap();
+        assert_eq!(quotes.method(), Method::GET);
+        assert_eq!(quotes.url().scheme(), "https");
+        assert_eq!(quotes.url().host_str(), Some("data.alpaca.markets"));
+        assert_eq!(quotes.url().path(), "/v1beta3/crypto/us/quotes");
+        assert_eq!(
+            quotes.url().query(),
+            Some(
+                "symbols=BTC%2FUSD%2CETH%2FUSD&start=2026-10-02T00%3A00%3A00.123456789Z&end=2026-10-02T02%3A00%3A00Z&limit=25&sort=asc"
+            )
+        );
+        assert!(!quotes.url().query().unwrap().contains("timeframe"));
+        assert!(quotes.body().is_none());
+        assert_eq!(quotes.headers(), account.headers());
+    }
+
+    #[test]
+    fn crypto_quotes_request_supports_location_sort_limit_and_opaque_resume_token() {
+        let client = authenticated_client().unwrap();
+        let credentials = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let mut options = sample_quotes_args();
+        options.location = CryptoLocation::Eu1;
+        options.symbols = "SOL/USD".parse().unwrap();
+        options.start = None;
+        options.end = None;
+        options.limit = 10000;
+        options.sort = BarsSort::Desc;
+        let quotes =
+            crypto_quotes_request(&client, &credentials, &options, Some("ABC+/==")).unwrap();
+        assert_eq!(quotes.url().path(), "/v1beta3/crypto/eu-1/quotes");
+        assert_eq!(
+            quotes.url().query(),
+            Some("symbols=SOL%2FUSD&limit=10000&sort=desc&page_token=ABC%2B%2F%3D%3D")
+        );
     }
 
     #[test]
