@@ -49,3 +49,38 @@ The opt-in read-only script ./scripts/cd.sh takes an order ID from the authentic
 **Explicit triparity difference:** Atalanta currently models an order-by-ID 404 as a successful optional absence (Result.Ok(Optional.empty())), whereas Kirke and Medea are CLIs and use a nonzero not-found diagnostic. This is recorded for the [Atalanta triparity audit #26](https://github.com/black-belt-badger/atalanta/issues/26), **not** reconciled by changing Atalanta or the CLI return conventions in this PR.
 
 **Deferred:** changing human output defaults, adding explicit nested=false, global stdout/stderr/diagnostics/pipelines, colors, shell completion or order-write commands. Shared CLI design remains in [Medea #44](https://github.com/black-belt-badger/medea/issues/44) / [Kirke #44](https://github.com/black-belt-badger/kirke/issues/44). Keep #37 open pending stakeholder acceptance.
+
+## Endpoint-level acceptance and shared Kirke/Medea behavior
+
+The API codec and HTTP tests above cover the provider contract. The final
+M3 check exercises the complete **lookup, identity validation, rendering and
+private export** boundary with the same fabricated Order fixtures in Haskell
+and Rust, without any credentials or live HTTP.
+
+| Invocation or result | Contract shared by both CLIs |
+| --- | --- |
+| `order get --help` | Lists UUID, `--nested` and `--out PATH`; no network |
+| `order get UUID` | Read-only authenticated paper GET for exactly that validated UUID; no arbitrary query |
+| `order get UUID --nested` | Sends only `nested=true`; default omits `nested`; full child order list decoded |
+| Invalid/missing UUID, unsupported flags | CLI error before credentials or network |
+| Valid matching order | Exact decimal summary using the same Order model and renderer as list-orders |
+| Crypto notional, partially filled equity, nested multi-leg options | Nullable fields and long decimal quantities preserved; option leg ratios displayed |
+| `order get UUID --out existing-dir/order.json` | Validate complete order and matching ID first; atomically export original provider bytes with private owner-only mode (0600 on Unix), then path-only notice |
+| HTTP 404 | Distinct nonzero not-found error, not a successful empty JSON object |
+| HTTP 401/403/429/5xx or transport failure | Nonzero sanitized error without request secrets or provider body |
+| Valid HTTP 200 with different primary order ID | Fixed sanitized mismatch diagnostic; no stdout and no file replacement |
+| Malformed JSON, unexpected array/scalar, missing fields, incorrect decimal types or malformed legs | Fixed invalid-order diagnostic; no output file mutation |
+| Missing/unwritable export directory | Nonzero error; no success notice or order payload on stdout |
+
+The command-level offline tests in both repositories reuse the **identical**
+`order-equity.json`, `order-crypto.json` and `order-mleg.json` synthetic
+fixtures. They verify matching response identity, exact full-precision output,
+leg rendering, raw byte fidelity, replacement permissions, failure-message
+sanitization and the critical guarantee that 404, mismatched identities or
+invalid JSON **cannot overwrite an existing export**.
+
+The endpoint intentionally does not implement `orders:by_client_order_id`,
+modify trading state or introduce additional CLI conventions. Shared
+diagnostics, color, shell completion, output modes and Unix pipeline behavior
+remain reserved for Kirke/Medea #44; Atalanta's different library-level
+404-as-optional result remains documented rather than silently changed.
