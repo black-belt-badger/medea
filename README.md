@@ -277,6 +277,12 @@ MEDEA_CREDENTIALS_FILE="$HOME/.config/kirke/credentials" ./scripts/it.sh
 
 Do not paste the script's private outputs into CI, an issue, or a release.
 
+## Visual identity
+
+<img src="docs/color.png" alt="Medea — small color icon" width="40" height="40">
+
+The logo, illustrations, and source images are documented in [Branding and asset usage](docs/BRANDING.md). They are project-specific, AI-assisted artwork selected by the maintainer, **not** official Alpaca artwork or a mark of affiliation. The README banner uses an optimized WebP display copy while the original images remain committed.
+
 ## Roadmap, contributions, and safety
 
 Next: historical crypto quotes, account state, and carefully controlled paper trading. **Live trading, order submission/cancellation, and streaming are not part of this version.**
