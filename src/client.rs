@@ -6,7 +6,7 @@ use reqwest::blocking::{Client, Request};
 use reqwest::header::HeaderValue;
 use reqwest::redirect::Policy;
 
-use crate::cli::{AssetClass, AssetStatus, OrderGetArgs, OrdersArgs};
+use crate::cli::{AssetsArgs, OrderGetArgs, OrdersArgs};
 use crate::credentials::Credentials;
 use crate::crypto_bars::{BarsInstant, BarsSort, CryptoBarsArgs, CryptoLocation, CryptoSymbols};
 use crate::crypto_trades::CryptoTradesArgs;
@@ -63,16 +63,33 @@ fn positions_request(client: &Client, credentials: &Credentials) -> Result<Reque
 fn assets_request(
     client: &Client,
     credentials: &Credentials,
-    class: AssetClass,
-    status: Option<AssetStatus>,
+    options: &AssetsArgs,
 ) -> Result<Request, ClientError> {
     let mut request = authenticated_request(client, credentials, PAPER_ASSETS_URL)?;
     // The query values are typed allowlists; url::form_urlencoded handles
     // proper percent encoding. Never interpolate user input into the URL.
     let mut query = request.url_mut().query_pairs_mut();
-    query.append_pair("asset_class", class.as_query());
-    if let Some(status) = status {
+    query.append_pair("asset_class", options.asset_class.as_query());
+    if let Some(status) = options.status {
         query.append_pair("status", status.as_query());
+    }
+    if let Some(exchanges) = &options.exchanges {
+        let csv = exchanges
+            .0
+            .iter()
+            .map(|value| value.as_query())
+            .collect::<Vec<_>>()
+            .join(",");
+        query.append_pair("exchange", &csv);
+    }
+    if let Some(attributes) = &options.attributes {
+        let csv = attributes
+            .0
+            .iter()
+            .map(|value| value.as_query())
+            .collect::<Vec<_>>()
+            .join(",");
+        query.append_pair("attributes", &csv);
     }
     drop(query);
     Ok(request)
@@ -272,11 +289,10 @@ pub fn fetch_positions(credentials: &Credentials) -> Result<Vec<u8>, ClientError
 
 pub fn fetch_assets(
     credentials: &Credentials,
-    class: AssetClass,
-    status: Option<AssetStatus>,
+    options: &AssetsArgs,
 ) -> Result<Vec<u8>, ClientError> {
     fetch_authenticated(credentials, |client, credentials| {
-        assets_request(client, credentials, class, status)
+        assets_request(client, credentials, options)
     })
 }
 
@@ -339,13 +355,23 @@ mod tests {
         positions_request,
     };
     use crate::cli::{
-        AssetClass, AssetStatus, OrderDirection, OrderGetArgs, OrderStatus, OrderSymbols,
-        OrdersArgs,
+        AssetAttribute, AssetAttributes, AssetClass, AssetExchange, AssetExchanges, AssetStatus,
+        AssetsArgs, OrderDirection, OrderGetArgs, OrderStatus, OrderSymbols, OrdersArgs,
     };
     use crate::credentials::Credentials;
     use crate::crypto_bars::{BarsFormat, BarsSort, CryptoBarsArgs, CryptoLocation};
     use crate::crypto_trades::CryptoTradesArgs;
     use reqwest::{Method, StatusCode};
+
+    fn sample_assets_args(asset_class: AssetClass, status: Option<AssetStatus>) -> AssetsArgs {
+        AssetsArgs {
+            asset_class,
+            status,
+            exchanges: None,
+            attributes: None,
+            output: None,
+        }
+    }
 
     fn sample_bars_args() -> CryptoBarsArgs {
         CryptoBarsArgs {
@@ -532,7 +558,12 @@ mod tests {
             key_id: "example-key".into(),
             secret_key: "example-secret".into(),
         };
-        let assets = assets_request(&client, &creds, AssetClass::Crypto, None).unwrap();
+        let assets = assets_request(
+            &client,
+            &creds,
+            &sample_assets_args(AssetClass::Crypto, None),
+        )
+        .unwrap();
         let account = account_request(&client, &creds).unwrap();
         assert_eq!(assets.method(), Method::GET);
         assert_eq!(assets.url().scheme(), "https");
@@ -553,8 +584,7 @@ mod tests {
         let assets = assets_request(
             &client,
             &creds,
-            AssetClass::UsEquity,
-            Some(AssetStatus::Active),
+            &sample_assets_args(AssetClass::UsEquity, Some(AssetStatus::Active)),
         )
         .unwrap();
         assert_eq!(
@@ -565,8 +595,7 @@ mod tests {
         let assets = assets_request(
             &client,
             &creds,
-            AssetClass::Crypto,
-            Some(AssetStatus::Inactive),
+            &sample_assets_args(AssetClass::Crypto, Some(AssetStatus::Inactive)),
         )
         .unwrap();
         assert_eq!(
@@ -574,9 +603,95 @@ mod tests {
             Some("asset_class=crypto&status=inactive")
         );
 
-        let assets =
-            assets_request(&client, &creds, AssetClass::Crypto, Some(AssetStatus::All)).unwrap();
+        let assets = assets_request(
+            &client,
+            &creds,
+            &sample_assets_args(AssetClass::Crypto, Some(AssetStatus::All)),
+        )
+        .unwrap();
         assert_eq!(assets.url().query(), Some("asset_class=crypto&status=all"));
+    }
+
+    #[test]
+    fn assets_encode_every_supplied_filter_and_keep_paper_auth() {
+        let client = authenticated_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let options = AssetsArgs {
+            asset_class: AssetClass::UsEquity,
+            status: Some(AssetStatus::Active),
+            exchanges: Some(AssetExchanges(vec![
+                AssetExchange::Nasdaq,
+                AssetExchange::Nyse,
+            ])),
+            attributes: Some(AssetAttributes(vec![
+                AssetAttribute::HasOptions,
+                AssetAttribute::Ipo,
+            ])),
+            output: None,
+        };
+        options.validate().unwrap();
+        let request = assets_request(&client, &creds, &options).unwrap();
+        assert_eq!(request.method(), Method::GET);
+        assert_eq!(request.url().host_str(), Some("paper-api.alpaca.markets"));
+        assert_eq!(request.url().scheme(), "https");
+        assert_eq!(request.url().path(), "/v2/assets");
+        assert_eq!(
+            request.url().query(),
+            Some(
+                "asset_class=us_equity&status=active&exchange=NASDAQ%2CNYSE&attributes=has_options%2Cipo"
+            )
+        );
+        assert_eq!(
+            request.headers(),
+            account_request(&client, &creds).unwrap().headers()
+        );
+    }
+
+    #[test]
+    fn assets_encode_index_filter_without_inventing_any_other_filters() {
+        let client = authenticated_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let options = AssetsArgs {
+            asset_class: AssetClass::UsIndex,
+            status: None,
+            exchanges: Some(AssetExchanges(vec![AssetExchange::Index])),
+            attributes: None,
+            output: None,
+        };
+        options.validate().unwrap();
+        let req = assets_request(&client, &creds, &options).unwrap();
+        assert_eq!(
+            req.url().query(),
+            Some("asset_class=us_index&exchange=INDEX")
+        );
+    }
+
+    #[test]
+    fn assets_attributes_without_exchange_do_not_send_exchange_filter() {
+        let client = authenticated_client().unwrap();
+        let creds = Credentials {
+            key_id: "example-key".into(),
+            secret_key: "example-secret".into(),
+        };
+        let options = AssetsArgs {
+            asset_class: AssetClass::Crypto,
+            status: None,
+            exchanges: None,
+            attributes: Some(AssetAttributes(vec![AssetAttribute::OvernightTradable])),
+            output: None,
+        };
+        options.validate().unwrap();
+        let req = assets_request(&client, &creds, &options).unwrap();
+        assert_eq!(
+            req.url().query(),
+            Some("asset_class=crypto&attributes=overnight_tradable")
+        );
     }
 
     #[test]

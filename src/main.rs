@@ -1,6 +1,7 @@
 mod account;
 mod account_details;
 mod account_status;
+mod asset_types;
 mod assets;
 mod cli;
 mod client;
@@ -104,9 +105,9 @@ fn run(cli: Cli) -> Result<(), String> {
             Ok(())
         }
         Command::Assets(options) => {
+            options.validate()?;
             let credentials = load_credentials().map_err(|err| err.to_string())?;
-            let response = fetch_assets(&credentials, options.asset_class, options.status)
-                .map_err(|err| err.to_string())?;
+            let response = fetch_assets(&credentials, &options).map_err(|err| err.to_string())?;
             // Validate even when exporting complete provider JSON.
             let assets = decode_assets(&response)
                 .map_err(|_| "Invalid Alpaca assets response.".to_owned())?;

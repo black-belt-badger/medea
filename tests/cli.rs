@@ -61,6 +61,8 @@ fn assets_help_lists_filters_and_output() {
     let stdout = String::from_utf8_lossy(&result.stdout);
     assert!(stdout.contains("--asset-class"));
     assert!(stdout.contains("--status"));
+    assert!(stdout.contains("--exchange"));
+    assert!(stdout.contains("--attributes"));
     assert!(stdout.contains("--out"));
     assert!(stdout.contains("us_equity"));
 }
@@ -88,6 +90,54 @@ fn invalid_assets_filters_and_missing_option_values_fail_cli() {
         let result = cli(&args);
         assert!(!result.status.success());
         assert!(result.stdout.is_empty());
+    }
+}
+
+#[test]
+fn asset_exchange_mismatch_fails_before_loading_credentials() {
+    for args in [
+        vec!["assets", "--exchange", "NASDAQ"],
+        vec![
+            "assets",
+            "--asset-class",
+            "us_equity",
+            "--exchange",
+            "INDEX",
+        ],
+        vec!["assets", "--asset-class", "us_index", "--exchange", "NYSE"],
+        vec![
+            "assets",
+            "--asset-class",
+            "crypto_perp",
+            "--exchange",
+            "NASDAQ",
+        ],
+    ] {
+        let output = cli(&args);
+        assert!(!output.status.success(), "{args:?}");
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("exchange") || stderr.contains("Exchange") || stderr.contains("INDEX"),
+            "{stderr}"
+        );
+        assert!(!stderr.contains("Missing environment variable"));
+    }
+}
+
+#[test]
+fn invalid_assets_csv_is_rejected_by_clap_without_credentials_or_stdout() {
+    for args in [
+        vec!["assets", "--exchange", "NASDAQ,"],
+        vec!["assets", "--exchange", "CRYPTO"],
+        vec!["assets", "--attributes", "has_options,has_options"],
+        vec!["assets", "--attributes", "NOT_AN_ATTRIBUTE"],
+    ] {
+        let output = cli(&args);
+        assert!(!output.status.success(), "{args:?}");
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!stderr.contains("Missing environment variable"));
     }
 }
 
