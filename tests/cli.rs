@@ -48,6 +48,21 @@ fn missing_positions_output_path_is_invalid_cli() {
 }
 
 #[test]
+fn positions_reject_unsupported_filter_flags_before_credentials() {
+    for args in [
+        vec!["positions", "--symbol", "BTCUSD"],
+        vec!["positions", "--asset-class", "crypto"],
+        vec!["positions", "--limit", "5"],
+    ] {
+        let result = cli(&args);
+        assert!(!result.status.success(), "{args:?}");
+        assert!(result.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(!stderr.contains("Missing environment variable"));
+    }
+}
+
+#[test]
 fn help_lists_assets_command() {
     let result = cli(&["--help"]);
     assert!(result.status.success());

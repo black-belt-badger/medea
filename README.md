@@ -116,7 +116,7 @@ medea positions
 cargo run --locked -- positions
 ```
 
-The command includes crypto and equity positions, showing symbol, asset class, long/short side, quantity, market value, current price, and unrealized P/L. Alpaca supplies financial quantities and amounts as decimal strings; Medea preserves them exactly, without floating-point rounding. Absent values print as `not provided`. An empty portfolio prints `No open positions.`
+The command includes crypto and equity positions, showing symbol, typed asset class and long/short side, quantity, market value, current price, and unrealized P/L. The decoder covers **all 22 documented position properties** (17 required), including swap rates and the optional ten-field nested USD object for local-currency accounts. Alpaca supplies financial quantities and amounts as decimal strings; Medea preserves them exactly without floating-point rounding. An empty portfolio prints `No open positions.`. See the [M3 positions coverage matrix](docs/api/positions.md).
 
 Save the original, complete JSON array instead of displaying the summary:
 

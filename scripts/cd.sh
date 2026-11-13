@@ -39,6 +39,16 @@ test "$(stat -c '%a' ./output/account-summary.txt)" = 600
 test -s ./output/positions-summary.txt
 grep -q '^Medea — Alpaca paper positions$' ./output/positions-summary.txt
 jq -e 'type == "array"' ./output/positions.json > /dev/null
+# Verify the actual paper API honors the required M3 positions wire types.
+jq -e 'type == "array" and all(.[];
+  (.asset_id | type) == "string" and
+  (.asset_class | type) == "string" and
+  (.exchange | type) == "string" and
+  (.side | type) == "string" and
+  (.qty | type) == "string" and
+  (.market_value | type) == "string" and
+  (.current_price | type) == "string" and
+  (.asset_marginable | type) == "boolean")' ./output/positions.json > /dev/null
 test "$(stat -c '%a' ./output/positions.json)" = 600
 test "$(stat -c '%a' ./output/positions-summary.txt)" = 600
 
