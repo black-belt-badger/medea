@@ -6,6 +6,10 @@ Versions use [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+_No changes yet._
+
+## [0.2.0] - 2026-11-13
+
 ### Added
 - `medea crypto trades` fetches bounded historical individual crypto executions with validated symbols, locations, date bounds and continuation tokens, reusing the authenticated read-only market-data request builder.
 - Precise numeric trade IDs/prices/sizes, nanosecond timestamp strings, optional taker sides, incremental JSON/JSONL output and atomic private rollback on partial failures; offline and live integration tests.
